@@ -241,25 +241,8 @@ class SessionBridge {
 	}
 
 	onAgentEnd(): void {
-		// If there's unbuffered text that message_end didn't catch, deliver it now
-		const remaining = this.textBuffer.join("");
-		if (remaining) {
-			const assistantMsg: ChatMessage = {
-				role: "assistant",
-				content: remaining,
-				timestamp: new Date().toISOString(),
-				toolCalls: this.toolNames.length > 0 ? [...this.toolNames] : undefined,
-			};
-			this.history.push(assistantMsg);
-			broadcastSSE(this.clients, "assistant_message", assistantMsg);
-		}
-
 		this.busy = false;
 		this.pendingFromPhone = false;
-		this.textBuffer = [];
-		this.toolNames = [];
-		this.pushTerminalLine("[done] Complete");
-		broadcastSSE(this.clients, "done", {});
 		broadcastSSE(this.clients, "status", { busy: false });
 	}
 
@@ -279,22 +262,7 @@ class SessionBridge {
 	}
 
 	onMessageEnd(message: any): void {
-		// Diagnostic — writes to file, not terminal (remove once stable)
-		try {
-			const fs = require("node:fs");
-			const info = {
-				ts: new Date().toISOString(),
-				role: message?.role,
-				isArray: Array.isArray(message?.content),
-				types: Array.isArray(message?.content) ? message.content.map((p: any) => p.type) : [],
-				textParts: Array.isArray(message?.content) ? message.content.filter((p: any) => p.type === "text").map((p: any) => (p.text || "").slice(0, 80)) : [],
-				buffer: this.textBuffer.join("").slice(0, 80),
-				clients: this.clients.size,
-			};
-			fs.appendFileSync("/tmp/web-chat-debug.log", JSON.stringify(info) + "\n");
-		} catch {}
-
-		// Extract text from the completed message
+		// Extract the full text from the completed message
 		let fullText = "";
 		if (message?.content) {
 			if (Array.isArray(message.content)) {
