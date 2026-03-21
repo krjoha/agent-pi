@@ -264,18 +264,16 @@ class SessionBridge {
 	}
 
 	onMessageEnd(message: any): void {
-		// Diagnostic — write to file so it doesn't pollute terminal
+		// Diagnostic — writes to file, not terminal (remove once stable)
 		try {
 			const fs = require("node:fs");
 			const info = {
+				ts: new Date().toISOString(),
 				role: message?.role,
-				contentType: typeof message?.content,
 				isArray: Array.isArray(message?.content),
-				contentLength: Array.isArray(message?.content) ? message.content.length : 0,
 				types: Array.isArray(message?.content) ? message.content.map((p: any) => p.type) : [],
-				textParts: Array.isArray(message?.content) ? message.content.filter((p: any) => p.type === "text").map((p: any) => (p.text || "").slice(0, 50)) : [],
-				bufferLength: this.textBuffer.length,
-				bufferPreview: this.textBuffer.join("").slice(0, 50),
+				textParts: Array.isArray(message?.content) ? message.content.filter((p: any) => p.type === "text").map((p: any) => (p.text || "").slice(0, 80)) : [],
+				buffer: this.textBuffer.join("").slice(0, 80),
 				clients: this.clients.size,
 			};
 			fs.appendFileSync("/tmp/web-chat-debug.log", JSON.stringify(info) + "\n");
@@ -298,7 +296,6 @@ class SessionBridge {
 			fullText = this.textBuffer.join("");
 		}
 
-		// Only broadcast if there's actual text (skip tool-use-only messages)
 		if (fullText) {
 			const preview = fullText.length > 60 ? fullText.slice(0, 57) + "..." : fullText;
 			this.pushTerminalLine(`[msg] ${preview.replace(/\n/g, " ")}`);
@@ -311,14 +308,16 @@ class SessionBridge {
 			};
 			this.history.push(assistantMsg);
 			broadcastSSE(this.clients, "assistant_message", assistantMsg);
-			this.textBuffer = [];
-
-			// Send done + not-busy when we have text (this is the final response).
-			// agent_end doesn't fire reliably through extension hooks.
-			broadcastSSE(this.clients, "done", {});
-			broadcastSSE(this.clients, "status", { busy: false });
-			this.busy = false;
 		}
+
+		// ALWAYS signal completion — matches the working version.
+		// This fires for every message (including tool-use), which resets
+		// the phone's busy state. The phone handles this gracefully.
+		broadcastSSE(this.clients, "done", {});
+		broadcastSSE(this.clients, "status", { busy: false });
+		this.busy = false;
+		this.textBuffer = [];
+		this.toolNames = [];
 	}
 
 	onToolStart(event: ToolExecutionStartEvent): void {
