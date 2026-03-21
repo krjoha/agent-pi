@@ -400,7 +400,7 @@ export function generateWebChatHTML(opts: { port: number; logoDataUri?: string }
         ${logo ? '<img src="' + logo + '" class="header-logo" alt="Pi">' : '<span style="font-size:20px;font-weight:700">π</span>'}
       </div>
       <div class="header-right">
-        <span class="relay-badge" title="Connected to main Pi session">⚡ relay</span>
+        <span class="relay-badge" title="Connected to main Pi session">relay</span>
         <div class="status-dot" id="status-dot" title="Connected"></div>
         <button class="header-btn" onclick="resetChat()" title="New conversation">New</button>
         <button class="header-btn header-btn-shutdown" onclick="shutdownChat()" title="Stop server &amp; disconnect">✕</button>

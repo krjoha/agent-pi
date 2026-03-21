@@ -132,6 +132,18 @@ function generateQRString(url: string): Promise<string> {
 	});
 }
 
+function printQRBlock(qr: string, url: string, pin: string): void {
+	const w = process.stderr.write.bind(process.stderr);
+	w("\n\n");
+	w(qr);
+	w("\n\n");
+	w(`  URL:  ${url}\n`);
+	w(`  PIN:  ${pin}\n`);
+	w("\n");
+	w(`  Scan QR with phone camera. One device at a time.\n`);
+	w("\n\n");
+}
+
 // ── SSE Helpers ──────────────────────────────────────────────────────
 
 function sendSSE(client: SSEClient, event: string, data: any): void {
@@ -800,24 +812,24 @@ export default function (pi: ExtensionAPI) {
 			openBrowser(localUrl);
 
 			const qr = await generateQRString(lanUrl);
-			console.error(`\n  \x1b[1;36m⚡ Web Chat (relay mode)\x1b[0m\n\n${qr}\n\n  \x1b[1mURL:\x1b[0m  ${lanUrl}\n  \x1b[1mPIN:\x1b[0m  \x1b[1;33m${pin}\x1b[0m\n`);
+			printQRBlock(qr, lanUrl, pin);
 
 			return {
 				content: [{
 					type: "text" as const,
 					text: [
-						`Web Chat is live! (relay mode)`,
+						`Web Chat is live (relay mode)`,
 						``,
 						`Local:  ${localUrl}`,
 						`Phone:  ${lanUrl}`,
 						`PIN:    ${pin}`,
 						``,
-						`Scan the QR code above with your phone camera.`,
+						`Scan the QR code in the terminal with your phone camera.`,
 						`Only one device can be authenticated at a time.`,
 						``,
-						`  /chat            — reopen/restart the chat`,
-						`  /chat --remote   — secure tunnel (accessible from anywhere)`,
-						`  /chat stop       — shut down the server`,
+						`  /chat            -- reopen/restart the chat`,
+						`  /chat --remote   -- secure tunnel (accessible from anywhere)`,
+						`  /chat stop       -- shut down the server`,
 					].join("\n"),
 				}],
 			};
@@ -871,22 +883,7 @@ export default function (pi: ExtensionAPI) {
 
 				const phoneUrl = tunnelUrl || lanUrl;
 				const qr = await generateQRString(phoneUrl);
-
-				// Print QR code and connection info to stderr (shows in terminal)
-				const lines = [
-					"",
-					`  \x1b[1;36m⚡ Web Chat (relay mode)\x1b[0m`,
-					"",
-					qr,
-					"",
-					`  \x1b[1mURL:\x1b[0m  ${phoneUrl}`,
-					`  \x1b[1mPIN:\x1b[0m  \x1b[1;33m${pin}\x1b[0m`,
-					"",
-					`  \x1b[2mScan QR with your phone camera to connect.\x1b[0m`,
-					`  \x1b[2mOnly one device can be authenticated at a time.\x1b[0m`,
-					"",
-				];
-				console.error(lines.join("\n"));
+				printQRBlock(qr, phoneUrl, pin);
 
 				if (tunnelUrl) {
 					ctx.ui.notify(`Web Chat → ${tunnelUrl} PIN: ${pin}`, "success");
