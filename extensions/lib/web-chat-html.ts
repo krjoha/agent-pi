@@ -10,40 +10,43 @@ export function generateWebChatHTML(opts: { port: number; logoDataUri?: string }
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="theme-color" content="#0a0e1a">
+<meta name="theme-color" content="#1a1d23">
 <title>Pi Agent</title>
 <style>
   :root {
-    --bg: #0a0e1a;
-    --surface: #0f1424;
-    --surface2: #151b2e;
-    --surface3: #1b2338;
-    --border: #1e2a42;
-    --border-light: #263350;
-    --text: #e2e8f4;
-    --text-muted: #7b8ba8;
-    --text-dim: #3e4f6e;
-    --blue: #3b82f6;
-    --blue-bright: #60a5fa;
-    --blue-glow: rgba(59, 130, 246, 0.15);
-    --blue-dim: rgba(59, 130, 246, 0.08);
-    --blue-dark: #1e3a5f;
-    --blue-border: #2a5599;
-    --success: #34d399;
-    --warning: #fbbf24;
-    --error: #f87171;
-    --tool-bg: rgba(59, 130, 246, 0.06);
-    --tool-border: rgba(59, 130, 246, 0.18);
-    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --bg: #1a1d23;
+    --surface: #1e2228;
+    --surface2: #252a32;
+    --surface3: #2e343e;
+    --border: #2e343e;
+    --border-light: #3a424e;
+    --text: #e2e8f0;
+    --text-muted: #8892a0;
+    --text-dim: #555d6e;
+    --accent: #2980b9;
+    --accent-hover: #3a9ad5;
+    --accent-glow: rgba(41, 128, 185, 0.15);
+    --accent-dim: rgba(41, 128, 185, 0.12);
+    --accent-dark: #1c4f73;
+    --accent-border: #2674a8;
+    --success: #48d889;
+    --success-bg: rgba(72, 216, 137, 0.08);
+    --warning: #f0b429;
+    --warning-bg: rgba(240, 180, 41, 0.08);
+    --error: #e85858;
+    --error-bg: rgba(232, 88, 88, 0.08);
+    --tool-bg: rgba(41, 128, 185, 0.06);
+    --tool-border: rgba(41, 128, 185, 0.18);
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif;
     --mono: "SF Mono", "Fira Code", "JetBrains Mono", Consolas, monospace;
-    --radius: 12px;
+    --radius: 6px;
     --safe-bottom: env(safe-area-inset-bottom, 0px);
     --safe-top: env(safe-area-inset-top, 0px);
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body {
     height: 100%; background: var(--bg); color: var(--text);
-    font-family: var(--font); font-size: 16px; line-height: 1.5;
+    font-family: var(--font); font-size: 15px; line-height: 1.65;
     -webkit-font-smoothing: antialiased; overscroll-behavior: none;
   }
 
@@ -65,14 +68,14 @@ export function generateWebChatHTML(opts: { port: number; logoDataUri?: string }
   .pin-subtitle { font-size: 14px; color: var(--text-muted); text-align: center; }
   .pin-input-row { display: flex; gap: 10px; }
   .pin-digit {
-    width: 52px; height: 60px; border-radius: 12px;
+    width: 52px; height: 60px; border-radius: var(--radius);
     background: var(--surface2); border: 2px solid var(--border);
     color: var(--text); font-size: 24px; font-weight: 600;
     text-align: center; outline: none; font-family: var(--mono);
     transition: border-color 0.2s;
     -webkit-appearance: none;
   }
-  .pin-digit:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-glow); }
+  .pin-digit:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
   .pin-error {
     font-size: 13px; color: var(--error); min-height: 20px;
     transition: opacity 0.2s;
@@ -85,12 +88,13 @@ export function generateWebChatHTML(opts: { port: number; logoDataUri?: string }
   /* ── Header ───────────────────────────────────────── */
   #header {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 10px 16px; padding-top: calc(10px + var(--safe-top));
-    background: var(--surface); border-bottom: 1px solid var(--border);
-    flex-shrink: 0; z-index: 10; width: 100%;
+    padding: 14px 20px; padding-top: calc(14px + var(--safe-top));
+    background: var(--surface); border: 1px solid var(--border);
+    border-left: 3px solid var(--accent); border-radius: var(--radius);
+    margin: 12px 16px 0; flex-shrink: 0; z-index: 10; gap: 14px;
   }
-  .header-left { display: flex; align-items: center; gap: 10px; }
-  .header-logo { height: 28px; opacity: 0.9; }
+  .header-left { display: flex; align-items: center; gap: 14px; }
+  .header-logo { height: 20px; opacity: 0.6; image-rendering: pixelated; }
   .header-right { display: flex; align-items: center; gap: 8px; }
 
   .status-dot {
@@ -103,20 +107,23 @@ export function generateWebChatHTML(opts: { port: number; logoDataUri?: string }
 
   .header-btn {
     background: var(--surface2); border: 1px solid var(--border);
-    color: var(--text-muted); font-size: 13px; padding: 6px 12px;
-    border-radius: 8px; cursor: pointer; transition: all 0.15s;
+    color: var(--text-muted); font-size: 13px; font-weight: 500;
+    padding: 7px 18px; border-radius: 4px; cursor: pointer;
+    transition: all 0.15s; font-family: var(--font);
   }
-  .header-btn:hover { background: var(--surface3); color: var(--text); }
+  .header-btn:hover { background: var(--border); color: var(--text); }
   .header-btn:active { transform: scale(0.97); }
+  .header-btn-shutdown { color: var(--error); border-color: rgba(232,88,88,0.3); padding: 7px 10px; }
+  .header-btn-shutdown:hover { background: var(--error-bg); color: var(--error); border-color: var(--error); }
 
   .dir-pill {
     display: flex; align-items: center; gap: 6px;
     padding: 5px 10px; background: var(--surface2);
-    border: 1px solid var(--border); border-radius: 8px;
+    border: 1px solid var(--border); border-radius: 4px;
     font-size: 12px; color: var(--text-muted); cursor: pointer;
     transition: all 0.15s; max-width: 160px; overflow: hidden;
   }
-  .dir-pill:hover { background: var(--surface3); color: var(--text); border-color: var(--blue); }
+  .dir-pill:hover { background: var(--surface3); color: var(--text); border-color: var(--accent); }
   .dir-pill:active { transform: scale(0.97); }
   .dir-pill .dir-icon { font-size: 13px; flex-shrink: 0; }
   .dir-pill .dir-name {
@@ -142,7 +149,7 @@ export function generateWebChatHTML(opts: { port: number; logoDataUri?: string }
     font-size: 11px; font-weight: 600; text-transform: uppercase;
     letter-spacing: 0.05em; margin-bottom: 4px; padding-left: 2px;
   }
-  .message-label.user-label { color: var(--blue-bright); }
+  .message-label.user-label { color: var(--accent-hover); }
   .message-label.assistant-label { color: var(--success); }
 
   .message-bubble {
@@ -150,8 +157,8 @@ export function generateWebChatHTML(opts: { port: number; logoDataUri?: string }
     border: 1px solid; word-wrap: break-word; overflow-wrap: anywhere;
     width: 100%;
   }
-  .user-bubble { background: var(--blue-dark); border-color: var(--blue-border); }
-  .assistant-bubble { background: var(--surface2); border-color: var(--border); }
+  .user-bubble { background: var(--accent-dim); border-color: var(--accent-border); }
+  .assistant-bubble { background: var(--surface); border-color: var(--border); }
 
   .message-time {
     font-size: 11px; color: var(--text-dim); margin-top: 4px; padding-left: 2px;
@@ -162,12 +169,12 @@ export function generateWebChatHTML(opts: { port: number; logoDataUri?: string }
     display: inline-flex; align-items: center; gap: 6px;
     padding: 4px 10px; margin: 4px 0;
     background: var(--tool-bg); border: 1px solid var(--tool-border);
-    border-radius: 6px; font-size: 12px; color: var(--blue);
+    border-radius: 4px; font-size: 12px; color: var(--accent);
     font-family: var(--mono);
   }
   .tool-spinner {
     width: 12px; height: 12px;
-    border: 2px solid var(--tool-border); border-top-color: var(--blue);
+    border: 2px solid var(--tool-border); border-top-color: var(--accent);
     border-radius: 50%; animation: spin 0.8s linear infinite;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
@@ -198,18 +205,18 @@ export function generateWebChatHTML(opts: { port: number; logoDataUri?: string }
   .welcome p { font-size: 14px; max-width: 320px; line-height: 1.6; }
   .welcome-suggestions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 8px; }
   .suggestion {
-    padding: 8px 14px; background: var(--surface2);
-    border: 1px solid var(--border); border-radius: 20px;
+    padding: 8px 14px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 4px;
     font-size: 13px; color: var(--text-muted); cursor: pointer;
     transition: all 0.15s;
   }
-  .suggestion:hover { background: var(--surface3); color: var(--text); border-color: var(--blue); }
+  .suggestion:hover { background: var(--surface2); color: var(--text); border-color: var(--accent); }
   .suggestion:active { transform: scale(0.97); }
 
   /* ── Input ────────────────────────────────────────── */
   #input-area {
     padding: 12px 16px; padding-bottom: calc(12px + var(--safe-bottom));
-    background: var(--surface); border-top: 1px solid var(--border);
+    background: var(--bg); border-top: 1px solid var(--border);
     flex-shrink: 0; width: 100%; position: relative;
   }
   #input-wrapper {
@@ -218,7 +225,7 @@ export function generateWebChatHTML(opts: { port: number; logoDataUri?: string }
     border-radius: var(--radius); padding: 4px; transition: border-color 0.2s;
     width: 100%;
   }
-  #input-wrapper:focus-within { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-glow); }
+  #input-wrapper:focus-within { border-color: var(--accent); }
   #message-input {
     flex: 1; background: transparent; border: none; color: var(--text);
     font-family: var(--font); font-size: 16px; line-height: 1.5;
@@ -227,13 +234,13 @@ export function generateWebChatHTML(opts: { port: number; logoDataUri?: string }
   }
   #message-input::placeholder { color: var(--text-dim); }
   #send-btn {
-    width: 40px; height: 40px; border-radius: 10px;
-    background: var(--blue); border: none; color: #fff;
-    font-size: 18px; cursor: pointer; display: flex;
-    align-items: center; justify-content: center;
-    transition: all 0.15s; flex-shrink: 0;
+    width: 36px; height: 36px; border-radius: 4px;
+    background: transparent; border: 1px solid var(--accent);
+    color: var(--accent); font-size: 18px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s; flex-shrink: 0; font-weight: 600;
   }
-  #send-btn:hover { filter: brightness(1.15); }
+  #send-btn:hover { background: var(--accent-dim); color: var(--accent-hover); }
   #send-btn:active { transform: scale(0.93); }
   #send-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 
@@ -244,12 +251,12 @@ export function generateWebChatHTML(opts: { port: number; logoDataUri?: string }
   .assistant-bubble strong { color: #fff; font-weight: 600; }
   .assistant-bubble em { color: var(--text-muted); }
   .assistant-bubble code {
-    background: rgba(255,255,255,0.08); padding: 2px 6px;
-    border-radius: 4px; font-family: var(--mono); font-size: 0.88em;
-    color: var(--blue-bright);
+    background: rgba(255,255,255,0.06); padding: 2px 6px;
+    border-radius: 3px; font-family: var(--mono); font-size: 0.88em;
+    color: var(--accent-hover);
   }
   .assistant-bubble pre {
-    background: #060a14; border: 1px solid var(--border);
+    background: var(--bg); border: 1px solid var(--border);
     border-radius: 8px; padding: 12px; margin: 8px 0;
     overflow-x: auto; -webkit-overflow-scrolling: touch;
   }
@@ -259,7 +266,7 @@ export function generateWebChatHTML(opts: { port: number; logoDataUri?: string }
   .assistant-bubble ul, .assistant-bubble ol { padding-left: 1.5em; margin: 0.4em 0; }
   .assistant-bubble li { margin: 0.2em 0; }
   .assistant-bubble blockquote {
-    border-left: 3px solid var(--blue); padding-left: 12px;
+    border-left: 3px solid var(--accent); padding-left: 12px;
     margin: 8px 0; color: var(--text-muted);
   }
   .assistant-bubble h1, .assistant-bubble h2, .assistant-bubble h3,
@@ -269,7 +276,7 @@ export function generateWebChatHTML(opts: { port: number; logoDataUri?: string }
   .assistant-bubble h1 { font-size: 1.3em; }
   .assistant-bubble h2 { font-size: 1.15em; }
   .assistant-bubble h3 { font-size: 1.05em; }
-  .assistant-bubble a { color: var(--blue-bright); text-decoration: none; }
+  .assistant-bubble a { color: var(--accent-hover); text-decoration: none; }
   .assistant-bubble a:hover { text-decoration: underline; }
   .assistant-bubble hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
   .assistant-bubble table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 14px; }
@@ -280,14 +287,15 @@ export function generateWebChatHTML(opts: { port: number; logoDataUri?: string }
 
   .cursor {
     display: inline-block; width: 2px; height: 1em;
-    background: var(--blue); margin-left: 2px; vertical-align: text-bottom;
+    background: var(--accent); margin-left: 2px; vertical-align: text-bottom;
     animation: blink 1s step-end infinite;
   }
   @keyframes blink { 50% { opacity: 0; } }
 
   .connection-banner {
-    padding: 8px 16px; background: rgba(248,113,113,0.1);
-    border-bottom: 1px solid rgba(248,113,113,0.2);
+    padding: 8px 16px; background: var(--error-bg);
+    border: 1px solid rgba(232,88,88,0.2); border-radius: var(--radius);
+    margin: 8px 16px 0;
     color: var(--error); font-size: 13px; text-align: center; display: none;
   }
   .connection-banner.visible { display: block; }
@@ -303,7 +311,7 @@ export function generateWebChatHTML(opts: { port: number; logoDataUri?: string }
   #dir-panel {
     position: fixed; bottom: 0; left: 0; right: 0;
     max-height: 75vh; background: var(--surface);
-    border-top: 1px solid var(--border); border-radius: 16px 16px 0 0;
+    border-top: 1px solid var(--border); border-radius: 6px 6px 0 0;
     z-index: 101; display: none; flex-direction: column;
     animation: slideUp 0.25s ease; padding-bottom: var(--safe-bottom);
   }
@@ -316,7 +324,7 @@ export function generateWebChatHTML(opts: { port: number; logoDataUri?: string }
   }
   .dir-panel-header h3 { font-size: 16px; font-weight: 600; }
   .dir-panel-close {
-    width: 32px; height: 32px; border-radius: 50%;
+    width: 32px; height: 32px; border-radius: 4px;
     background: var(--surface2); border: 1px solid var(--border);
     color: var(--text-muted); font-size: 16px; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
@@ -326,11 +334,11 @@ export function generateWebChatHTML(opts: { port: number; logoDataUri?: string }
   .dir-search-wrapper { padding: 12px 16px; flex-shrink: 0; }
   .dir-search {
     width: 100%; padding: 10px 12px; background: var(--surface2);
-    border: 1px solid var(--border); border-radius: 10px;
-    color: var(--text); font-family: var(--font); font-size: 15px;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    color: var(--text); font-family: var(--font); font-size: 14px;
     outline: none; transition: border-color 0.2s;
   }
-  .dir-search:focus { border-color: var(--blue); }
+  .dir-search:focus { border-color: var(--accent); }
   .dir-search::placeholder { color: var(--text-dim); }
 
   .dir-list {
@@ -342,18 +350,18 @@ export function generateWebChatHTML(opts: { port: number; logoDataUri?: string }
 
   .dir-item {
     display: flex; align-items: center; gap: 12px;
-    padding: 12px; border-radius: 10px; cursor: pointer; transition: all 0.12s;
+    padding: 12px; border-radius: var(--radius); cursor: pointer; transition: all 0.12s;
   }
   .dir-item:hover { background: var(--surface2); }
   .dir-item:active { background: var(--surface3); transform: scale(0.99); }
-  .dir-item.active { background: var(--blue-dim); border: 1px solid var(--tool-border); }
+  .dir-item.active { background: var(--accent-dim); border: 1px solid var(--tool-border); }
 
   .dir-item-icon {
-    width: 36px; height: 36px; border-radius: 10px;
+    width: 36px; height: 36px; border-radius: var(--radius);
     background: var(--surface3); display: flex; align-items: center;
     justify-content: center; font-size: 16px; flex-shrink: 0;
   }
-  .dir-item.active .dir-item-icon { background: var(--blue-glow); }
+  .dir-item.active .dir-item-icon { background: var(--accent-glow); }
   .dir-item-info { flex: 1; min-width: 0; }
   .dir-item-name {
     font-size: 15px; font-weight: 500; color: var(--text);
@@ -365,8 +373,9 @@ export function generateWebChatHTML(opts: { port: number; logoDataUri?: string }
   }
   .dir-item-badges { display: flex; gap: 4px; flex-shrink: 0; }
   .dir-badge {
-    font-size: 10px; padding: 2px 6px; border-radius: 4px;
-    font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em;
+    font-size: 10px; padding: 2px 6px; border-radius: 3px;
+    font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+    font-family: var(--mono);
   }
   .dir-badge.git { background: rgba(240,80,50,0.15); color: #f05032; }
   .dir-badge.pkg { background: rgba(52,211,153,0.12); color: var(--success); }
@@ -378,7 +387,7 @@ export function generateWebChatHTML(opts: { port: number; logoDataUri?: string }
     display: none; position: absolute; bottom: 100%; left: 0; right: 0;
     max-height: 260px; overflow-y: auto; background: var(--surface);
     border: 1px solid var(--border); border-bottom: none;
-    border-radius: var(--radius) var(--radius) 0 0;
+    border-radius: 6px 6px 0 0;
     z-index: 50; margin-bottom: 0;
     -webkit-overflow-scrolling: touch;
   }
@@ -391,8 +400,8 @@ export function generateWebChatHTML(opts: { port: number; logoDataUri?: string }
   }
   .slash-item:hover, .slash-item.selected { background: var(--surface2); }
   .slash-item-name {
-    font-family: var(--mono); font-size: 14px; font-weight: 600;
-    color: var(--blue-bright); white-space: nowrap;
+    font-family: var(--mono); font-size: 13px; font-weight: 600;
+    color: var(--accent); white-space: nowrap;
   }
   .slash-item-desc {
     font-size: 13px; color: var(--text-muted);
@@ -401,11 +410,13 @@ export function generateWebChatHTML(opts: { port: number; logoDataUri?: string }
 
   /* ── Mode Bar ─────────────────────────────────────── */
   #mode-bar {
-    display: none; width: 100%; padding: 4px 16px;
-    background: rgb(30,144,255); color: #fff;
-    font-size: 13px; font-weight: 700; letter-spacing: 0.04em;
-    text-align: left; flex-shrink: 0;
-    transition: opacity 0.15s, transform 0.15s;
+    display: none; padding: 4px 16px;
+    margin: 8px 16px 0; border-radius: var(--radius);
+    background: var(--accent-dim); border: 1px solid var(--accent);
+    color: var(--accent-hover); font-size: 11px; font-weight: 700;
+    letter-spacing: 1px; text-transform: uppercase;
+    text-align: left; flex-shrink: 0; font-family: var(--mono);
+    transition: opacity 0.15s;
   }
   #mode-bar.visible { display: block; }
   .mode-hint {
@@ -444,6 +455,7 @@ export function generateWebChatHTML(opts: { port: number; logoDataUri?: string }
         </div>
         <div class="status-dot" id="status-dot" title="Connected"></div>
         <button class="header-btn" onclick="resetChat()" title="New conversation">New</button>
+        <button class="header-btn header-btn-shutdown" onclick="shutdownChat()" title="Stop server &amp; disconnect">✕</button>
       </div>
     </div>
 
@@ -842,7 +854,7 @@ export function generateWebChatHTML(opts: { port: number; logoDataUri?: string }
   function addSystemMessage(text) {
     const div = document.createElement('div');
     div.className = 'message';
-    div.innerHTML = '<div class="message-bubble" style="background:rgba(248,113,113,0.1);border-color:rgba(248,113,113,0.2);color:var(--error);font-size:14px;">' + escapeHtml(text) + '</div>';
+    div.innerHTML = '<div class="message-bubble" style="background:var(--error-bg);border-color:rgba(232,88,88,0.2);color:var(--error);font-size:14px;border-radius:var(--radius);">' + escapeHtml(text) + '</div>';
     messagesEl.appendChild(div);
     scrollToBottom(true);
   }
@@ -878,6 +890,14 @@ export function generateWebChatHTML(opts: { port: number; logoDataUri?: string }
       if (welcomeEl) { messagesEl.appendChild(welcomeEl); welcomeEl.style.display = ''; }
       currentStreamBubble = null; currentStreamText = ''; setBusy(false);
     } catch (err) { addSystemMessage('Error resetting: ' + err.message); }
+  };
+
+  window.shutdownChat = async function() {
+    if (!confirm('Stop the chat server? This will end the session and close the tunnel.')) return;
+    try {
+      await authedFetch('/shutdown', { method: 'POST' });
+      document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:var(--font);color:#8892a0;background:#1a1d23;flex-direction:column;gap:12px"><div style="font-size:24px">Server stopped</div><div style="font-size:14px;color:#555d6e">You can close this tab.</div></div>';
+    } catch (err) { addSystemMessage('Error shutting down: ' + err.message); }
   };
 
   function setBusy(b) {
