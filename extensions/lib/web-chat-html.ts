@@ -66,11 +66,11 @@ export function generateWebChatHTML(opts: { port: number; logoDataUri?: string }
   .pin-logo { height: 48px; opacity: 0.9; }
   .pin-title { font-size: 18px; font-weight: 600; color: var(--text); }
   .pin-subtitle { font-size: 14px; color: var(--text-muted); text-align: center; }
-  .pin-input-row { display: flex; gap: 10px; }
+  .pin-input-row { display: flex; gap: 8px; }
   .pin-digit {
-    width: 52px; height: 60px; border-radius: var(--radius);
+    width: 44px; height: 54px; border-radius: var(--radius);
     background: var(--surface2); border: 2px solid var(--border);
-    color: var(--text); font-size: 24px; font-weight: 600;
+    color: var(--text); font-size: 22px; font-weight: 600;
     text-align: center; outline: none; font-family: var(--mono);
     transition: border-color 0.2s;
     -webkit-appearance: none;
@@ -373,12 +373,14 @@ export function generateWebChatHTML(opts: { port: number; logoDataUri?: string }
   <div id="pin-screen">
     ${logo ? '<img src="' + logo + '" class="pin-logo" alt="Pi">' : ''}
     <div class="pin-title">Enter PIN</div>
-    <div class="pin-subtitle">Check your terminal for the 4-digit PIN</div>
+    <div class="pin-subtitle">Check your terminal for the 6-digit PIN</div>
     <div class="pin-input-row">
       <input type="tel" class="pin-digit" id="p1" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
       <input type="tel" class="pin-digit" id="p2" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
       <input type="tel" class="pin-digit" id="p3" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
       <input type="tel" class="pin-digit" id="p4" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
+      <input type="tel" class="pin-digit" id="p5" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
+      <input type="tel" class="pin-digit" id="p6" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
     </div>
     <div class="pin-error" id="pin-error"></div>
   </div>
@@ -441,7 +443,8 @@ export function generateWebChatHTML(opts: { port: number; logoDataUri?: string }
   const chatScreen = document.getElementById('chat-screen');
   const pinError = document.getElementById('pin-error');
   const pinInputs = [document.getElementById('p1'), document.getElementById('p2'),
-                     document.getElementById('p3'), document.getElementById('p4')];
+                     document.getElementById('p3'), document.getElementById('p4'),
+                     document.getElementById('p5'), document.getElementById('p6')];
 
   // Check for saved token
   const saved = document.cookie.match(/pi_token=([^;]+)/);
@@ -456,11 +459,11 @@ export function generateWebChatHTML(opts: { port: number; logoDataUri?: string }
   pinInputs.forEach((inp, i) => {
     inp.addEventListener('input', () => {
       inp.value = inp.value.replace(/[^0-9]/g, '').slice(0, 1);
-      if (inp.value && i < 3) pinInputs[i + 1].focus();
-      // Auto-submit when all 4 filled
-      if (i === 3 && inp.value) {
+      if (inp.value && i < 5) pinInputs[i + 1].focus();
+      // Auto-submit when all 6 filled
+      if (i === 5 && inp.value) {
         const pin = pinInputs.map(p => p.value).join('');
-        if (pin.length === 4) submitPIN(pin);
+        if (pin.length === 6) submitPIN(pin);
       }
     });
     inp.addEventListener('keydown', (e) => {

@@ -3,20 +3,31 @@
   "private": true,
   "version": "2.0.0",
   "description": "Multi-agent orchestration suite for Pi — 6 modes, 43 extensions, 11 themes",
-  "keywords": ["pi-package"],
+  "keywords": [
+    "pi-package"
+  ],
   "pi": {
-    "extensions": ["./extensions"],
-    "skills": ["./skills"],
-    "themes": ["./themes"],
-    "prompts": ["./prompts"]
+    "extensions": [
+      "./extensions"
+    ],
+    "skills": [
+      "./skills"
+    ],
+    "themes": [
+      "./themes"
+    ],
+    "prompts": [
+      "./prompts"
+    ]
   },
   "peerDependencies": {
+    "@mariozechner/pi-agent-core": "*",
     "@mariozechner/pi-coding-agent": "*",
     "@mariozechner/pi-tui": "*",
-    "@mariozechner/pi-agent-core": "*",
     "@sinclair/typebox": "*"
   },
   "dependencies": {
+    "qrcode-terminal": "^0.12.0",
     "yaml": "^2.8.2"
   }
 }

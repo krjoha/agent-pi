@@ -11,6 +11,7 @@ import { execSync, spawn, type ChildProcess } from "node:child_process";
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
 import { networkInterfaces } from "node:os";
 import { randomInt } from "node:crypto";
+import qrTerminal from "qrcode-terminal";
 import { outputLine } from "./lib/output-box.ts";
 import { applyExtensionDefaults } from "./lib/themeMap.ts";
 import { generateWebChatHTML } from "./lib/web-chat-html.ts";
@@ -104,7 +105,7 @@ function startTunnel(localPort: number): Promise<{ url: string; proc: ChildProce
 // ── PIN Authentication ───────────────────────────────────────────────
 
 function generatePIN(): string {
-	return String(randomInt(1000, 9999));
+	return String(randomInt(100000, 999999));
 }
 
 // ── Logo Loading ─────────────────────────────────────────────────────
@@ -119,6 +120,16 @@ function loadLogoBase64(): string {
 		}
 	} catch {}
 	return "";
+}
+
+// ── QR Code Generation ───────────────────────────────────────────────
+
+function generateQRString(url: string): Promise<string> {
+	return new Promise((resolve) => {
+		qrTerminal.generate(url, { small: true }, (code: string) => {
+			resolve(code);
+		});
+	});
 }
 
 // ── SSE Helpers ──────────────────────────────────────────────────────
@@ -297,20 +308,23 @@ function startChatServer(
 		const sseClients = bridge["clients"];
 		let clientIdCounter = 0;
 		const logoDataUri = loadLogoBase64();
-		const authedTokens = new Set<string>();
+		// Single-user lock: only one authenticated session at a time
+		let activeToken: string | null = null;
 
 		function makeToken(): string {
+			// Revoke any previous token — only one user at a time
 			const t = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-			authedTokens.add(t);
+			activeToken = t;
 			return t;
 		}
 
 		function isAuthed(req: IncomingMessage, url: URL): boolean {
+			if (!activeToken) return false;
 			const cookies = req.headers.cookie || "";
 			const match = cookies.match(/pi_token=([^;]+)/);
-			if (match && authedTokens.has(match[1])) return true;
+			if (match && match[1] === activeToken) return true;
 			const qToken = url.searchParams.get("token");
-			if (qToken && authedTokens.has(qToken)) return true;
+			if (qToken && qToken === activeToken) return true;
 			return false;
 		}
 
@@ -707,6 +721,9 @@ export default function (pi: ExtensionAPI) {
 			const { localUrl, lanUrl, pin } = await launchChat(ctx);
 			openBrowser(localUrl);
 
+			const qr = await generateQRString(lanUrl);
+			console.error(`\n  \x1b[1;36m⚡ Web Chat (relay mode)\x1b[0m\n\n${qr}\n\n  \x1b[1mURL:\x1b[0m  ${lanUrl}\n  \x1b[1mPIN:\x1b[0m  \x1b[1;33m${pin}\x1b[0m\n`);
+
 			return {
 				content: [{
 					type: "text" as const,
@@ -717,8 +734,8 @@ export default function (pi: ExtensionAPI) {
 						`Phone:  ${lanUrl}`,
 						`PIN:    ${pin}`,
 						``,
-						`Phone messages go directly into THIS session.`,
-						`You'll see them here, and the phone sees your output.`,
+						`Scan the QR code above with your phone camera.`,
+						`Only one device can be authenticated at a time.`,
 						``,
 						`  /chat            — reopen/restart the chat`,
 						`  /chat --remote   — secure tunnel (accessible from anywhere)`,
@@ -774,10 +791,29 @@ export default function (pi: ExtensionAPI) {
 				const { localUrl, lanUrl, pin, tunnelUrl } = await launchChat(ctx, remote);
 				openBrowser(localUrl);
 
+				const phoneUrl = tunnelUrl || lanUrl;
+				const qr = await generateQRString(phoneUrl);
+
+				// Print QR code and connection info to stderr (shows in terminal)
+				const lines = [
+					"",
+					`  \x1b[1;36m⚡ Web Chat (relay mode)\x1b[0m`,
+					"",
+					qr,
+					"",
+					`  \x1b[1mURL:\x1b[0m  ${phoneUrl}`,
+					`  \x1b[1mPIN:\x1b[0m  \x1b[1;33m${pin}\x1b[0m`,
+					"",
+					`  \x1b[2mScan QR with your phone camera to connect.\x1b[0m`,
+					`  \x1b[2mOnly one device can be authenticated at a time.\x1b[0m`,
+					"",
+				];
+				console.error(lines.join("\n"));
+
 				if (tunnelUrl) {
-					ctx.ui.notify(`Web Chat (relay) → ${tunnelUrl} PIN: ${pin}`, "success");
+					ctx.ui.notify(`Web Chat → ${tunnelUrl} PIN: ${pin}`, "success");
 				} else {
-					ctx.ui.notify(`Web Chat (relay) → ${lanUrl} PIN: ${pin}`, "success");
+					ctx.ui.notify(`Web Chat → ${lanUrl} PIN: ${pin}`, "success");
 				}
 			} catch (err: any) {
 				ctx.ui.notify(err?.message || "Failed to start chat", "error");
@@ -794,4 +830,10 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_shutdown", async () => {
 		cleanupServer();
 	});
+
+	// Kill chat server when the terminal/process exits (SIGINT, SIGTERM, etc.)
+	const exitHandler = () => { cleanupServer(); };
+	process.on("exit", exitHandler);
+	process.on("SIGINT", exitHandler);
+	process.on("SIGTERM", exitHandler);
 }
