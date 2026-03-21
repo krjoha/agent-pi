@@ -132,18 +132,6 @@ function generateQRString(url: string): Promise<string> {
 	});
 }
 
-function printQRBlock(qr: string, url: string, pin: string): void {
-	const w = process.stderr.write.bind(process.stderr);
-	w("\n\n");
-	w(qr);
-	w("\n\n");
-	w(`  URL:  ${url}\n`);
-	w(`  PIN:  ${pin}\n`);
-	w("\n");
-	w(`  Scan QR with phone camera. One device at a time.\n`);
-	w("\n\n");
-}
-
 // ── SSE Helpers ──────────────────────────────────────────────────────
 
 function sendSSE(client: SSEClient, event: string, data: any): void {
@@ -153,6 +141,9 @@ function sendSSE(client: SSEClient, event: string, data: any): void {
 }
 
 function broadcastSSE(clients: Map<number, SSEClient>, event: string, data: any): void {
+	if (clients.size === 0 && (event === "text_delta" || event === "done" || event === "status")) {
+		console.error(`[web-chat] broadcast ${event} but 0 SSE clients connected!`);
+	}
 	for (const client of clients.values()) {
 		sendSSE(client, event, data);
 	}
@@ -300,13 +291,12 @@ class SessionBridge {
 		const name = event.toolName || "tool";
 		this.toolNames.push(name);
 		broadcastSSE(this.clients, "tool_start", { name });
-		this.pushTerminalLine(`[tool] ${name}`);
+		this.pushTerminalLine(`▶ ${name}`);
 	}
 
-	onToolEnd(event: ToolExecutionEndEvent): void {
-		const name = event.toolName || "tool";
+	onToolEnd(_event: ToolExecutionEndEvent): void {
 		broadcastSSE(this.clients, "tool_end", {});
-		this.pushTerminalLine(`[ok] ${name}`);
+		this.pushTerminalLine(`✓ tool done`);
 	}
 
 	onInput(text: string, source: string): void {
@@ -451,6 +441,7 @@ function startChatServer(
 				const clientId = ++clientIdCounter;
 				const client: SSEClient = { id: clientId, res };
 				sseClients.set(clientId, client);
+				console.error(`[web-chat] SSE client ${clientId} connected (total: ${sseClients.size})`);
 
 				sendSSE(client, "connected", {
 					busy: bridge.isBusy(),
@@ -464,10 +455,6 @@ function startChatServer(
 				}
 
 				// Send existing terminal history
-				if (bridge.getTerminalHistory().length === 0) {
-					// Send a welcome line so terminal isn't blank
-					sendSSE(client, "terminal_output", { line: "[info] Connected — activity will appear here" });
-				}
 				for (const line of bridge.getTerminalHistory()) {
 					sendSSE(client, "terminal_output", { line });
 				}
@@ -479,6 +466,7 @@ function startChatServer(
 				req.on("close", () => {
 					clearInterval(pingInterval);
 					sseClients.delete(clientId);
+					console.error(`[web-chat] SSE client ${clientId} disconnected (remaining: ${sseClients.size})`);
 					if (sseClients.size === 0) resetShutdownTimer();
 				});
 
@@ -498,6 +486,7 @@ function startChatServer(
 							res.end(JSON.stringify({ ok: false, error: "Empty message" }));
 							return;
 						}
+						console.error(`[web-chat] /send received: "${message.slice(0, 50)}" (clients: ${sseClients.size})`);
 						bridge.sendMessage(message);
 						res.writeHead(200, { "Content-Type": "application/json" });
 						res.end(JSON.stringify({ ok: true }));
@@ -532,6 +521,19 @@ function startChatServer(
 			if (req.method === "GET" && url.pathname === "/history") {
 				res.writeHead(200, { "Content-Type": "application/json" });
 				res.end(JSON.stringify({ messages: bridge.getHistory() }));
+				return;
+			}
+
+			// ── Debug ────────────────────────────────────────────
+			if (req.method === "GET" && url.pathname === "/debug") {
+				res.writeHead(200, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({
+					busy: bridge.isBusy(),
+					clients: sseClients.size,
+					historyCount: bridge.getHistory().length,
+					terminalLines: bridge.getTerminalHistory().length,
+					bridgeExists: !!bridge,
+				}));
 				return;
 			}
 
@@ -690,12 +692,14 @@ export default function (pi: ExtensionAPI) {
 	// ── Event hooks — relay main session events to phone ─────────────
 
 	pi.on("agent_start", async () => {
+		console.error("[web-chat] agent_start fired, bridge=" + !!activeBridge + " clients=" + (activeBridge?.hasClients() ?? "n/a"));
 		if (activeBridge) {
 			activeBridge.onAgentStart();
 		}
 	});
 
 	pi.on("agent_end", async () => {
+		console.error("[web-chat] agent_end fired");
 		if (activeBridge) {
 			activeBridge.onAgentEnd();
 		}
@@ -703,29 +707,36 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("message_update", async (event) => {
 		if (activeBridge) {
+			const delta = event.assistantMessageEvent;
+			const snippet = delta?.type === "text_delta" ? ` text="${String((delta as any).delta || "").slice(0, 30)}"` : "";
+			console.error(`[web-chat] message_update type=${delta?.type}${snippet} clients=${activeBridge.hasClients()}`);
 			activeBridge.onMessageUpdate(event);
 		}
 	});
 
 	pi.on("message_end", async (event) => {
+		console.error(`[web-chat] message_end fired, content_type=${typeof (event as any).message?.content}`);
 		if (activeBridge) {
 			activeBridge.onMessageEnd((event as any).message);
 		}
 	});
 
 	pi.on("tool_execution_start", async (event) => {
+		console.error("[web-chat] tool_start: " + event.toolName);
 		if (activeBridge) {
 			activeBridge.onToolStart(event);
 		}
 	});
 
 	pi.on("tool_execution_end", async (event) => {
+		console.error("[web-chat] tool_end: " + event.toolName);
 		if (activeBridge) {
 			activeBridge.onToolEnd(event);
 		}
 	});
 
 	pi.on("input", async (event) => {
+		console.error("[web-chat] input event source=" + event.source + " text=" + event.text?.slice(0, 50));
 		if (activeBridge) {
 			activeBridge.onInput(event.text, event.source);
 		}
@@ -748,24 +759,24 @@ export default function (pi: ExtensionAPI) {
 			openBrowser(localUrl);
 
 			const qr = await generateQRString(lanUrl);
-			printQRBlock(qr, lanUrl, pin);
+			console.error(`\n  \x1b[1;36m⚡ Web Chat (relay mode)\x1b[0m\n\n${qr}\n\n  \x1b[1mURL:\x1b[0m  ${lanUrl}\n  \x1b[1mPIN:\x1b[0m  \x1b[1;33m${pin}\x1b[0m\n`);
 
 			return {
 				content: [{
 					type: "text" as const,
 					text: [
-						`Web Chat is live (relay mode)`,
+						`Web Chat is live! (relay mode)`,
 						``,
 						`Local:  ${localUrl}`,
 						`Phone:  ${lanUrl}`,
 						`PIN:    ${pin}`,
 						``,
-						`Scan the QR code in the terminal with your phone camera.`,
+						`Scan the QR code above with your phone camera.`,
 						`Only one device can be authenticated at a time.`,
 						``,
-						`  /chat            -- reopen/restart the chat`,
-						`  /chat --remote   -- secure tunnel (accessible from anywhere)`,
-						`  /chat stop       -- shut down the server`,
+						`  /chat            — reopen/restart the chat`,
+						`  /chat --remote   — secure tunnel (accessible from anywhere)`,
+						`  /chat stop       — shut down the server`,
 					].join("\n"),
 				}],
 			};
@@ -819,7 +830,22 @@ export default function (pi: ExtensionAPI) {
 
 				const phoneUrl = tunnelUrl || lanUrl;
 				const qr = await generateQRString(phoneUrl);
-				printQRBlock(qr, phoneUrl, pin);
+
+				// Print QR code and connection info to stderr (shows in terminal)
+				const lines = [
+					"",
+					`  \x1b[1;36m⚡ Web Chat (relay mode)\x1b[0m`,
+					"",
+					qr,
+					"",
+					`  \x1b[1mURL:\x1b[0m  ${phoneUrl}`,
+					`  \x1b[1mPIN:\x1b[0m  \x1b[1;33m${pin}\x1b[0m`,
+					"",
+					`  \x1b[2mScan QR with your phone camera to connect.\x1b[0m`,
+					`  \x1b[2mOnly one device can be authenticated at a time.\x1b[0m`,
+					"",
+				];
+				console.error(lines.join("\n"));
 
 				if (tunnelUrl) {
 					ctx.ui.notify(`Web Chat → ${tunnelUrl} PIN: ${pin}`, "success");
