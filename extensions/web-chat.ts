@@ -130,6 +130,9 @@ function sendSSE(client: SSEClient, event: string, data: any): void {
 }
 
 function broadcastSSE(clients: Map<number, SSEClient>, event: string, data: any): void {
+	if (clients.size === 0 && (event === "text_delta" || event === "done" || event === "status")) {
+		console.error(`[web-chat] broadcast ${event} but 0 SSE clients connected!`);
+	}
 	for (const client of clients.values()) {
 		sendSSE(client, event, data);
 	}
@@ -395,6 +398,7 @@ function startChatServer(
 				const clientId = ++clientIdCounter;
 				const client: SSEClient = { id: clientId, res };
 				sseClients.set(clientId, client);
+				console.error(`[web-chat] SSE client ${clientId} connected (total: ${sseClients.size})`);
 
 				sendSSE(client, "connected", {
 					busy: bridge.isBusy(),
@@ -419,6 +423,7 @@ function startChatServer(
 				req.on("close", () => {
 					clearInterval(pingInterval);
 					sseClients.delete(clientId);
+					console.error(`[web-chat] SSE client ${clientId} disconnected (remaining: ${sseClients.size})`);
 					if (sseClients.size === 0) resetShutdownTimer();
 				});
 
@@ -438,6 +443,7 @@ function startChatServer(
 							res.end(JSON.stringify({ ok: false, error: "Empty message" }));
 							return;
 						}
+						console.error(`[web-chat] /send received: "${message.slice(0, 50)}" (clients: ${sseClients.size})`);
 						bridge.sendMessage(message);
 						res.writeHead(200, { "Content-Type": "application/json" });
 						res.end(JSON.stringify({ ok: true }));
