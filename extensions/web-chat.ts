@@ -4,8 +4,8 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, readdirSync, statSync, existsSync } from "node:fs";
+import { join, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execSync, spawn, type ChildProcess } from "node:child_process";
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
@@ -71,6 +71,95 @@ function broadcastSSE(clients: Map<number, SSEClient>, event: string, data: any)
 	}
 }
 
+// ── Directory Discovery ──────────────────────────────────────────────
+
+interface ProjectDir {
+	path: string;
+	name: string;
+	hasGit: boolean;
+	hasPackageJson: boolean;
+}
+
+function discoverProjects(): ProjectDir[] {
+	const home = homedir();
+	const results: ProjectDir[] = [];
+	const seen = new Set<string>();
+
+	function addDir(dirPath: string): void {
+		if (seen.has(dirPath)) return;
+		try {
+			const s = statSync(dirPath);
+			if (!s.isDirectory()) return;
+		} catch { return; }
+		seen.add(dirPath);
+
+		const hasGit = existsSync(join(dirPath, ".git"));
+		const hasPackageJson = existsSync(join(dirPath, "package.json"));
+		results.push({
+			path: dirPath,
+			name: basename(dirPath),
+			hasGit,
+			hasPackageJson,
+		});
+	}
+
+	// Scan known dev parent directories for subdirectories
+	const devParents = [
+		join(home, "Workshop", "GitHub"),
+		join(home, "Workshop"),
+		join(home, "Projects"),
+		join(home, "Developer"),
+		join(home, "Code"),
+		join(home, "dev"),
+		join(home, "repos"),
+		join(home, "src"),
+		join(home, "Sites"),
+		join(home, "Desktop"),
+	];
+
+	for (const parent of devParents) {
+		if (!existsSync(parent)) continue;
+		try {
+			const entries = readdirSync(parent, { withFileTypes: true });
+			for (const entry of entries) {
+				if (!entry.isDirectory()) continue;
+				if (entry.name.startsWith(".")) continue;
+				const full = join(parent, entry.name);
+				// Only include directories that look like projects (have .git or package.json)
+				const hasGit = existsSync(join(full, ".git"));
+				const hasPkg = existsSync(join(full, "package.json"));
+				const hasCargo = existsSync(join(full, "Cargo.toml"));
+				const hasGo = existsSync(join(full, "go.mod"));
+				const hasPy = existsSync(join(full, "pyproject.toml")) || existsSync(join(full, "setup.py"));
+				if (hasGit || hasPkg || hasCargo || hasGo || hasPy) {
+					addDir(full);
+				}
+			}
+		} catch {}
+	}
+
+	// Also scan ~/ for top-level git repos (depth 1)
+	try {
+		const homeEntries = readdirSync(home, { withFileTypes: true });
+		for (const entry of homeEntries) {
+			if (!entry.isDirectory()) continue;
+			if (entry.name.startsWith(".")) continue;
+			const full = join(home, entry.name);
+			if (existsSync(join(full, ".git"))) {
+				addDir(full);
+			}
+		}
+	} catch {}
+
+	// Sort: git repos first, then alphabetically
+	results.sort((a, b) => {
+		if (a.hasGit !== b.hasGit) return a.hasGit ? -1 : 1;
+		return a.name.localeCompare(b.name);
+	});
+
+	return results;
+}
+
 // ── Agent Process Manager ────────────────────────────────────────────
 
 class AgentBridge {
@@ -81,14 +170,35 @@ class AgentBridge {
 	private clients: Map<number, SSEClient>;
 	private textBuffer: string[] = [];
 	private toolNames: string[] = [];
+	private cwd: string;
 
-	constructor(sessionId: string, clients: Map<number, SSEClient>) {
+	constructor(sessionId: string, clients: Map<number, SSEClient>, cwd?: string) {
 		this.sessionFile = getSessionFile(sessionId);
 		this.clients = clients;
+		this.cwd = cwd || process.cwd();
 	}
 
 	isBusy(): boolean {
 		return this.busy;
+	}
+
+	getCwd(): string {
+		return this.cwd;
+	}
+
+	setCwd(newCwd: string): void {
+		this.cwd = newCwd;
+		// Reset conversation when switching directories
+		if (this.proc) {
+			try { this.proc.kill(); } catch {}
+			this.proc = null;
+		}
+		this.busy = false;
+		this.history = [];
+		const newId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+		this.sessionFile = getSessionFile(newId);
+		broadcastSSE(this.clients, "dir_changed", { cwd: newCwd, name: basename(newCwd) });
+		broadcastSSE(this.clients, "reset", { ok: true });
 	}
 
 	getHistory(): ChatMessage[] {
@@ -155,6 +265,7 @@ class AgentBridge {
 		return new Promise<void>((resolve) => {
 			const proc = spawn("pi", args, {
 				stdio: ["ignore", "pipe", "pipe"],
+				cwd: this.cwd,
 				env: { ...process.env, PI_SUBAGENT: "1" },
 			});
 
@@ -301,6 +412,8 @@ function startChatServer(): Promise<{ port: number; server: Server }> {
 					sessionId,
 					busy: bridge.isBusy(),
 					historyCount: bridge.getHistory().length,
+					cwd: bridge.getCwd(),
+					cwdName: basename(bridge.getCwd()),
 				});
 
 				// Send existing history
@@ -370,6 +483,42 @@ function startChatServer(): Promise<{ port: number; server: Server }> {
 				bridge.reset();
 				res.writeHead(200, { "Content-Type": "application/json" });
 				res.end(JSON.stringify({ ok: true }));
+				return;
+			}
+
+			// ── List Directories ─────────────────────────────────
+			if (req.method === "GET" && url.pathname === "/directories") {
+				const projects = discoverProjects();
+				res.writeHead(200, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({
+					current: bridge.getCwd(),
+					currentName: basename(bridge.getCwd()),
+					directories: projects,
+				}));
+				return;
+			}
+
+			// ── Set Directory ────────────────────────────────────
+			if (req.method === "POST" && url.pathname === "/set-directory") {
+				let body = "";
+				req.on("data", (chunk) => { body += chunk; });
+				req.on("end", () => {
+					try {
+						const data = JSON.parse(body || "{}");
+						const dirPath = String(data.path || "").trim();
+						if (!dirPath || !existsSync(dirPath)) {
+							res.writeHead(400, { "Content-Type": "application/json" });
+							res.end(JSON.stringify({ ok: false, error: "Directory not found" }));
+							return;
+						}
+						bridge.setCwd(dirPath);
+						res.writeHead(200, { "Content-Type": "application/json" });
+						res.end(JSON.stringify({ ok: true, cwd: dirPath, name: basename(dirPath) }));
+					} catch (err: any) {
+						res.writeHead(400, { "Content-Type": "application/json" });
+						res.end(JSON.stringify({ ok: false, error: err?.message || "Invalid request" }));
+					}
+				});
 				return;
 			}
 

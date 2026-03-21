@@ -494,6 +494,209 @@ export function generateWebChatHTML(opts: { port: number }): string {
     display: none;
   }
   .connection-banner.visible { display: block; }
+
+  /* ── Directory Picker ─────────────────────────────── */
+  .dir-pill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 12px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s;
+    max-width: 180px;
+    overflow: hidden;
+  }
+  .dir-pill:hover { background: var(--surface3); color: var(--text); border-color: var(--accent); }
+  .dir-pill:active { transform: scale(0.97); }
+  .dir-pill .dir-icon { font-size: 13px; flex-shrink: 0; }
+  .dir-pill .dir-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-family: var(--mono);
+    font-weight: 500;
+  }
+  .dir-pill .dir-chevron { font-size: 10px; flex-shrink: 0; opacity: 0.5; }
+
+  #dir-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 100;
+    display: none;
+    animation: fadeOverlay 0.2s ease;
+  }
+  #dir-overlay.visible { display: block; }
+  @keyframes fadeOverlay {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  #dir-panel {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    max-height: 75vh;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    border-radius: 16px 16px 0 0;
+    z-index: 101;
+    display: none;
+    flex-direction: column;
+    animation: slideUp 0.25s ease;
+    padding-bottom: var(--safe-bottom);
+  }
+  #dir-panel.visible { display: flex; }
+  @keyframes slideUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+
+  .dir-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 16px 12px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .dir-panel-header h3 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .dir-panel-close {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+  }
+  .dir-panel-close:hover { background: var(--surface3); color: var(--text); }
+
+  .dir-search-wrapper {
+    padding: 12px 16px;
+    flex-shrink: 0;
+  }
+  .dir-search {
+    width: 100%;
+    padding: 10px 12px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 15px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .dir-search:focus { border-color: var(--accent); }
+  .dir-search::placeholder { color: var(--text-dim); }
+
+  .dir-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 8px 16px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .dir-list::-webkit-scrollbar { width: 4px; }
+  .dir-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .dir-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+  .dir-item:hover { background: var(--surface2); }
+  .dir-item:active { background: var(--surface3); transform: scale(0.99); }
+  .dir-item.active {
+    background: var(--accent-dim);
+    border: 1px solid var(--tool-border);
+  }
+
+  .dir-item-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: var(--surface3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+  .dir-item.active .dir-item-icon {
+    background: var(--accent-glow);
+  }
+
+  .dir-item-info {
+    flex: 1;
+    min-width: 0;
+  }
+  .dir-item-name {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .dir-item-path {
+    font-size: 12px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 2px;
+  }
+
+  .dir-item-badges {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+  .dir-badge {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .dir-badge.git { background: rgba(240, 80, 50, 0.15); color: #f05032; }
+  .dir-badge.pkg { background: rgba(72, 216, 137, 0.12); color: var(--success); }
+
+  .dir-empty {
+    text-align: center;
+    padding: 32px 16px;
+    color: var(--text-dim);
+    font-size: 14px;
+  }
+
+  .dir-loading {
+    text-align: center;
+    padding: 32px 16px;
+    color: var(--text-muted);
+    font-size: 14px;
+  }
 </style>
 </head>
 <body>
@@ -505,6 +708,11 @@ export function generateWebChatHTML(opts: { port: number }): string {
       <span>Pi Agent</span>
     </div>
     <div class="actions">
+      <div class="dir-pill" id="dir-pill" onclick="openDirPicker()" title="Change working directory">
+        <span class="dir-icon">📁</span>
+        <span class="dir-name" id="dir-pill-name">loading...</span>
+        <span class="dir-chevron">▼</span>
+      </div>
       <div class="status-dot" id="status-dot" title="Connected"></div>
       <button class="header-btn" onclick="resetChat()" title="New conversation">New</button>
     </div>
@@ -539,6 +747,21 @@ export function generateWebChatHTML(opts: { port: number }): string {
       ></textarea>
       <button id="send-btn" onclick="sendMessage()" title="Send">↑</button>
     </div>
+  </div>
+</div>
+
+<!-- Directory Picker Overlay -->
+<div id="dir-overlay" onclick="closeDirPicker()"></div>
+<div id="dir-panel">
+  <div class="dir-panel-header">
+    <h3>Working Directory</h3>
+    <button class="dir-panel-close" onclick="closeDirPicker()">✕</button>
+  </div>
+  <div class="dir-search-wrapper">
+    <input type="text" class="dir-search" id="dir-search" placeholder="Search projects..." oninput="filterDirs()">
+  </div>
+  <div class="dir-list" id="dir-list">
+    <div class="dir-loading">Loading projects...</div>
   </div>
 </div>
 
@@ -841,6 +1064,10 @@ export function generateWebChatHTML(opts: { port: number }): string {
 
       const data = JSON.parse(e.data);
       if (data.busy) setBusy(true);
+      if (data.cwdName) {
+        currentCwd = data.cwd || '';
+        updateDirPill(data.cwdName);
+      }
     });
 
     eventSource.addEventListener('user_message', (e) => {
@@ -896,6 +1123,12 @@ export function generateWebChatHTML(opts: { port: number }): string {
       setBusy(data.busy);
     });
 
+    eventSource.addEventListener('dir_changed', (e) => {
+      const data = JSON.parse(e.data);
+      currentCwd = data.cwd || '';
+      updateDirPill(data.name);
+    });
+
     eventSource.addEventListener('reset', () => {
       messagesEl.innerHTML = '';
       if (welcomeEl) {
@@ -923,6 +1156,110 @@ export function generateWebChatHTML(opts: { port: number }): string {
 
   // ── Handle error event name collision ──────────────
   // SSE 'error' is reserved, so we use 'error_event'
+
+  // ── Directory Picker ─────────────────────────────────
+  let allDirs = [];
+  let currentCwd = '';
+  const dirPillName = document.getElementById('dir-pill-name');
+  const dirOverlay = document.getElementById('dir-overlay');
+  const dirPanel = document.getElementById('dir-panel');
+  const dirList = document.getElementById('dir-list');
+  const dirSearch = document.getElementById('dir-search');
+
+  window.openDirPicker = async function() {
+    dirOverlay.classList.add('visible');
+    dirPanel.classList.add('visible');
+    dirSearch.value = '';
+    dirSearch.focus();
+
+    // Load directories
+    dirList.innerHTML = '<div class="dir-loading">Loading projects...</div>';
+    try {
+      const res = await fetch('/directories');
+      const data = await res.json();
+      allDirs = data.directories || [];
+      currentCwd = data.current || '';
+      renderDirList(allDirs);
+    } catch (err) {
+      dirList.innerHTML = '<div class="dir-empty">Failed to load directories</div>';
+    }
+  };
+
+  window.closeDirPicker = function() {
+    dirOverlay.classList.remove('visible');
+    dirPanel.classList.remove('visible');
+  };
+
+  window.filterDirs = function() {
+    const q = dirSearch.value.toLowerCase().trim();
+    if (!q) {
+      renderDirList(allDirs);
+      return;
+    }
+    const filtered = allDirs.filter(d =>
+      d.name.toLowerCase().includes(q) ||
+      d.path.toLowerCase().includes(q)
+    );
+    renderDirList(filtered);
+  };
+
+  function renderDirList(dirs) {
+    if (dirs.length === 0) {
+      dirList.innerHTML = '<div class="dir-empty">No projects found</div>';
+      return;
+    }
+    // Shorten paths for display (replace home with ~)
+    const home = currentCwd.split('/').slice(0, 3).join('/'); // rough guess
+    dirList.innerHTML = dirs.map(d => {
+      const isActive = d.path === currentCwd;
+      const shortPath = d.path.replace(/^\\/Users\\/[^\\/]+/, '~');
+      const badges = [];
+      if (d.hasGit) badges.push('<span class="dir-badge git">git</span>');
+      if (d.hasPackageJson) badges.push('<span class="dir-badge pkg">npm</span>');
+      return '<div class="dir-item' + (isActive ? ' active' : '') + '" onclick="selectDir(\\''+d.path.replace(/'/g, "\\\\'")+'\\')">'+
+        '<div class="dir-item-icon">' + (d.hasGit ? '📂' : '📁') + '</div>' +
+        '<div class="dir-item-info">' +
+          '<div class="dir-item-name">' + escapeHtml(d.name) + '</div>' +
+          '<div class="dir-item-path">' + escapeHtml(shortPath) + '</div>' +
+        '</div>' +
+        '<div class="dir-item-badges">' + badges.join('') + '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  window.selectDir = async function(dirPath) {
+    try {
+      const res = await fetch('/set-directory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: dirPath }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        currentCwd = dirPath;
+        updateDirPill(data.name);
+        closeDirPicker();
+        // Clear the chat since we switched directories
+        messagesEl.innerHTML = '';
+        if (welcomeEl) {
+          messagesEl.appendChild(welcomeEl);
+          welcomeEl.style.display = '';
+        }
+        currentStreamBubble = null;
+        currentStreamText = '';
+        setBusy(false);
+      } else {
+        addSystemMessage('Error: ' + (data.error || 'Failed to switch directory'));
+      }
+    } catch (err) {
+      addSystemMessage('Error switching directory: ' + err.message);
+    }
+  };
+
+  function updateDirPill(name) {
+    dirPillName.textContent = name || 'unknown';
+    dirPillName.title = currentCwd;
+  }
 
   // ── Initialize ─────────────────────────────────────
   connectSSE();
