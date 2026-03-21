@@ -475,6 +475,19 @@ function startChatServer(
 				return;
 			}
 
+			// ── Debug ────────────────────────────────────────────
+			if (req.method === "GET" && url.pathname === "/debug") {
+				res.writeHead(200, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({
+					busy: bridge.isBusy(),
+					clients: sseClients.size,
+					historyCount: bridge.getHistory().length,
+					terminalLines: bridge.getTerminalHistory().length,
+					bridgeExists: !!bridge,
+				}));
+				return;
+			}
+
 			// ── Shutdown (explicit close from client) ────────────
 			if (req.method === "POST" && url.pathname === "/shutdown") {
 				res.writeHead(200, { "Content-Type": "application/json" });
@@ -630,37 +643,44 @@ export default function (pi: ExtensionAPI) {
 	// ── Event hooks — relay main session events to phone ─────────────
 
 	pi.on("agent_start", async () => {
-		if (activeBridge?.hasClients()) {
+		console.error("[web-chat] agent_start fired, bridge=" + !!activeBridge + " clients=" + (activeBridge?.hasClients() ?? "n/a"));
+		if (activeBridge) {
 			activeBridge.onAgentStart();
 		}
 	});
 
 	pi.on("agent_end", async () => {
-		if (activeBridge?.hasClients()) {
+		console.error("[web-chat] agent_end fired");
+		if (activeBridge) {
 			activeBridge.onAgentEnd();
 		}
 	});
 
 	pi.on("message_update", async (event) => {
-		if (activeBridge?.hasClients()) {
+		if (activeBridge) {
+			const delta = event.assistantMessageEvent;
+			console.error("[web-chat] message_update type=" + delta?.type + " clients=" + activeBridge.hasClients());
 			activeBridge.onMessageUpdate(event);
 		}
 	});
 
 	pi.on("tool_execution_start", async (event) => {
-		if (activeBridge?.hasClients()) {
+		console.error("[web-chat] tool_start: " + event.toolName);
+		if (activeBridge) {
 			activeBridge.onToolStart(event);
 		}
 	});
 
 	pi.on("tool_execution_end", async (event) => {
-		if (activeBridge?.hasClients()) {
+		console.error("[web-chat] tool_end: " + event.toolName);
+		if (activeBridge) {
 			activeBridge.onToolEnd(event);
 		}
 	});
 
 	pi.on("input", async (event) => {
-		if (activeBridge?.hasClients()) {
+		console.error("[web-chat] input event source=" + event.source + " text=" + event.text?.slice(0, 50));
+		if (activeBridge) {
 			activeBridge.onInput(event.text, event.source);
 		}
 	});
