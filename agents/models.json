@@ -1,0 +1,36 @@
+{
+  "default": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5-20251001"
+  },
+  "agents": {
+    "scout": {
+      "provider": "x-ai",
+      "model": "grok-4.1-fast"
+    },
+    "builder": {
+      "provider": "anthropic",
+      "model": "claude-haiku-4-5"
+    },
+    "reviewer": {
+      "provider": "anthropic",
+      "model": "claude-opus-4-6"
+    },
+    "planner": {
+      "provider": "openai-codex",
+      "model": "gpt-5.4"
+    },
+    "tester": {
+      "provider": "openai-codex",
+      "model": "gpt-5.4"
+    },
+    "red-team": {
+      "provider": "openai-codex",
+      "model": "gpt-5.4"
+    },
+    "rlm-subcall": {
+      "provider": "anthropic",
+      "model": "claude-haiku-4-5"
+    }
+  }
+}

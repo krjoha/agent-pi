@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# OS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+.cursor/
+*.swp
+*.swo
+
+# Runtime / user config (not distributable)
+.context/
+bun.lock
+extensions/coverage/
+extensions/web-test-worker/.env
+extensions/web-test-worker/node_modules/
+autoresearch-results.tsv
+
+# Private content — NEVER tracked, NEVER pushed
+skills/private/
+extensions/private/
+commands/private/
+.private-patterns
+.github/
+
+# Runtime / Pi state
+.pi/

@@ -1,0 +1,348 @@
+// ABOUTME: Task Board Viewer — opens a GUI browser window showing a live Kanban board of agent work.
+// ABOUTME: Polls Commander MCP tools for tasks, agents, messages, and groups. Auto-refreshes every 3 seconds.
+
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { Text } from "@mariozechner/pi-tui";
+import { Type } from "@sinclair/typebox";
+import { readFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { execSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
+import { outputLine } from "./lib/output-box.ts";
+import { applyExtensionDefaults } from "./lib/themeMap.ts";
+import { generateBoardViewerHTML } from "./lib/board-viewer-html.ts";
+import { registerActiveViewer, clearActiveViewer, notifyViewerOpen } from "./lib/viewer-session.ts";
+
+// ── Types ────────────────────────────────────────────────────────────
+
+interface BoardResult {
+	action: "closed";
+}
+
+interface BoardData {
+	tasks: any[];
+	agents: any[];
+	messages: any[];
+	groups: any[];
+	readyTasks: any[];
+	connected: boolean;
+	timestamp: string;
+	error?: string;
+}
+
+// ── Commander Data Helpers ───────────────────────────────────────────
+
+/**
+ * Call a Commander MCP tool via the global client set by commander-mcp.ts.
+ * Returns the parsed result or null on failure.
+ */
+async function callCommander(toolName: string, params: Record<string, unknown>): Promise<any> {
+	const g = globalThis as any;
+	const client = g.__piCommanderClient;
+	if (!client) return null;
+
+	try {
+		const result = await client.callTool(toolName, params, 8000);
+		// MCP results come as { content: [{ type: "text", text: "..." }] }
+		if (result?.content?.[0]?.text) {
+			try {
+				return JSON.parse(result.content[0].text);
+			} catch {
+				return result.content[0].text;
+			}
+		}
+		return result;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Gather all board data from Commander in parallel.
+ */
+async function gatherBoardData(): Promise<BoardData> {
+	const g = globalThis as any;
+	const isAvailable = g.__piCommanderAvailable === true;
+
+	if (!isAvailable) {
+		return {
+			tasks: [],
+			agents: [],
+			messages: [],
+			groups: [],
+			readyTasks: [],
+			connected: false,
+			timestamp: new Date().toISOString(),
+			error: "Commander is not connected",
+		};
+	}
+
+	// Fire all requests in parallel
+	const [tasks, agents, messages, groups, readyTasks] = await Promise.all([
+		callCommander("commander_task", { operation: "list" }),
+		callCommander("commander_orchestration", { operation: "agent:list", active_only: false }),
+		callCommander("commander_mailbox", { operation: "inbox", agent_name: "commander" }),
+		callCommander("commander_task", { operation: "group:list" }),
+		callCommander("commander_dependency", { operation: "ready_tasks" }),
+	]);
+
+	return {
+		tasks: Array.isArray(tasks) ? tasks : (tasks?.tasks || []),
+		agents: Array.isArray(agents) ? agents : (agents?.agents || []),
+		messages: Array.isArray(messages) ? messages : (messages?.messages || []),
+		groups: Array.isArray(groups) ? groups : (groups?.groups || []),
+		readyTasks: Array.isArray(readyTasks) ? readyTasks : (readyTasks?.tasks || []),
+		connected: true,
+		timestamp: new Date().toISOString(),
+	};
+}
+
+// ── HTTP Server ──────────────────────────────────────────────────────
+
+function startBoardServer(
+	title: string,
+): Promise<{ port: number; server: Server; waitForResult: () => Promise<BoardResult> }> {
+	return new Promise((resolveSetup) => {
+		let resolveResult: (result: BoardResult) => void;
+		let settled = false;
+		const settle = (result: BoardResult) => {
+			if (settled) return;
+			settled = true;
+			resolveResult!(result);
+		};
+		const resultPromise = new Promise<BoardResult>((res) => {
+			resolveResult = res;
+		});
+
+		const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
+			res.setHeader("Access-Control-Allow-Origin", "*");
+			res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+			res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+			if (req.method === "OPTIONS") {
+				res.writeHead(204);
+				res.end();
+				return;
+			}
+
+			const url = new URL(req.url || "/", `http://localhost`);
+
+			// Serve the main HTML page
+			if (req.method === "GET" && url.pathname === "/") {
+				const port = (server.address() as any)?.port || 0;
+				const html = generateBoardViewerHTML({ title, port });
+				res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+				res.end(html);
+				return;
+			}
+
+			// Serve the logo image
+			if (req.method === "GET" && url.pathname === "/logo.png") {
+				try {
+					const logoPath = join(dirname(fileURLToPath(import.meta.url)), "assets", "agent-logo.png");
+					const logoData = readFileSync(logoPath);
+					res.writeHead(200, { "Content-Type": "image/png", "Cache-Control": "public, max-age=3600" });
+					res.end(logoData);
+				} catch {
+					res.writeHead(404);
+					res.end();
+				}
+				return;
+			}
+
+			// ── Main data endpoint ──────────────────────────────
+			if (req.method === "GET" && url.pathname === "/api/board-data") {
+				try {
+					const data = await gatherBoardData();
+					res.writeHead(200, {
+						"Content-Type": "application/json",
+						"Cache-Control": "no-cache",
+					});
+					res.end(JSON.stringify(data));
+				} catch (err: any) {
+					res.writeHead(500, { "Content-Type": "application/json" });
+					res.end(JSON.stringify({
+						tasks: [], agents: [], messages: [], groups: [], readyTasks: [],
+						connected: false,
+						timestamp: new Date().toISOString(),
+						error: err.message,
+					}));
+				}
+				return;
+			}
+
+			// ── Close the viewer ────────────────────────────────
+			if (req.method === "POST" && url.pathname === "/result") {
+				let body = "";
+				req.on("data", (chunk: string) => { body += chunk; });
+				req.on("end", () => {
+					res.writeHead(200, { "Content-Type": "application/json" });
+					res.end(JSON.stringify({ ok: true }));
+					settle({ action: "closed" });
+				});
+				return;
+			}
+
+			// 404
+			res.writeHead(404);
+			res.end("Not found");
+		});
+
+		server.on("close", () => {
+			settle({ action: "closed" });
+		});
+
+		server.listen(0, "127.0.0.1", () => {
+			const addr = server.address() as any;
+			resolveSetup({
+				port: addr.port,
+				server,
+				waitForResult: () => resultPromise,
+			});
+		});
+	});
+}
+
+function openBrowser(url: string): void {
+	try {
+		execSync(`open "${url}"`, { stdio: "ignore" });
+	} catch {
+		try {
+			execSync(`xdg-open "${url}"`, { stdio: "ignore" });
+		} catch {
+			try {
+				execSync(`start "${url}"`, { stdio: "ignore" });
+			} catch {}
+		}
+	}
+}
+
+// ── Tool Parameters ──────────────────────────────────────────────────
+
+const ShowBoardParams = Type.Object({
+	title: Type.Optional(Type.String({ description: "Title for the board (default: 'Task Board')" })),
+});
+
+// ── Extension ────────────────────────────────────────────────────────
+
+export default function (pi: ExtensionAPI) {
+	let activeServer: Server | null = null;
+	let activeSession: { kind: "board"; title: string; url: string; server: Server; onClose: () => void } | null = null;
+
+	function cleanupServer() {
+		const server = activeServer;
+		activeServer = null;
+		if (server) {
+			try { server.close(); } catch {}
+		}
+		if (activeSession) {
+			clearActiveViewer(activeSession);
+			activeSession = null;
+		}
+	}
+
+	// ── Core board launcher ──────────────────────────────────────────
+
+	async function launchBoard(
+		ctx: ExtensionContext,
+		title: string,
+	): Promise<string> {
+		// Clean up any previous server
+		cleanupServer();
+
+		// Start server
+		const { port, server } = await startBoardServer(title);
+		activeServer = server;
+
+		const url = `http://127.0.0.1:${port}`;
+		activeSession = {
+			kind: "board",
+			title,
+			url,
+			server,
+			onClose: () => {
+				activeServer = null;
+				activeSession = null;
+			},
+		};
+		registerActiveViewer(activeSession);
+
+		// Open the browser
+		openBrowser(url);
+		notifyViewerOpen(ctx, activeSession);
+
+		return url;
+	}
+
+	// ── show_board tool ──────────────────────────────────────────────
+
+	pi.registerTool({
+		name: "show_board",
+		label: "Show Board",
+		description:
+			"Open a live task board in the browser. Shows a Kanban-style view of tasks " +
+			"(Pending → Working → Completed → Failed), active agents, recent messages, and " +
+			"task group progress. Auto-refreshes every 3 seconds from Commander data.\n\n" +
+			"The board runs as a lightweight background web server. Unlike other viewers, " +
+			"it stays open and keeps refreshing — close the browser tab when done.\n\n" +
+			"Requires Commander MCP connection. Shows an offline state if Commander is unavailable.",
+		parameters: ShowBoardParams,
+
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const { title = "Task Board" } = params as { title?: string };
+
+			const url = await launchBoard(ctx, title);
+
+			return {
+				content: [{
+					type: "text" as const,
+					text: `Task board opened at ${url}\n\nThe board auto-refreshes every 3 seconds. Close the browser tab when done.\n\nFeatures:\n- Kanban columns: Pending → Working → Completed → Failed\n- Agent chips: click to filter by agent\n- Activity feed: recent mailbox messages\n- Group progress: task group completion bars\n- Keyboard: R=refresh, Esc=clear filter`,
+				}],
+			};
+		},
+
+		renderCall(args, theme) {
+			const titleArg = (args as any).title || "Task Board";
+			const text =
+				theme.fg("toolTitle", theme.bold("show_board ")) +
+				theme.fg("accent", titleArg);
+			return new Text(outputLine(theme, "accent", text), 0, 0);
+		},
+
+		renderResult(result, _options, theme) {
+			const text = result.content[0];
+			const firstLine = text?.type === "text" ? text.text.split("\n")[0] : "";
+			return new Text(
+				outputLine(theme, "success", firstLine),
+				0, 0,
+			);
+		},
+	});
+
+	// ── /board command ───────────────────────────────────────────────
+
+	pi.registerCommand("board", {
+		description: "Open the live task board in the browser",
+		handler: async (args, ctx) => {
+			if (!ctx.hasUI) {
+				ctx.ui.notify("/board requires interactive mode", "error");
+				return;
+			}
+
+			const title = args.trim() || "Task Board";
+			const url = await launchBoard(ctx, title);
+			ctx.ui.notify(`Task board opened at ${url}`, "info");
+		},
+	});
+
+	// ── Session lifecycle ────────────────────────────────────────────
+
+	pi.on("session_start", async (_event, ctx) => {
+		applyExtensionDefaults(import.meta.url, ctx);
+	});
+
+	pi.on("session_shutdown", async () => {
+		cleanupServer();
+	});
+}

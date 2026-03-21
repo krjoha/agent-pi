@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Text Tools</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+</head>
+<body>
+
+  <!-- Intro Modal -->
+  <div class="intro-backdrop" id="intro-backdrop" hidden>
+    <div class="intro-modal" role="dialog" aria-label="Welcome to Text Tools" aria-modal="true">
+      <img src="assets/texttools.png" alt="Text Tools" class="intro-logo">
+      <p class="intro-tagline">Fast, private text transformations — right in your browser.</p>
+      <div class="intro-details">
+        <div class="intro-detail-row">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          <span><strong>100% private.</strong> Nothing is stored on any server. All processing happens locally in your browser.</span>
+        </div>
+        <div class="intro-detail-row">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+          <span><strong>Works offline.</strong> No internet required after the first load. Zero external dependencies.</span>
+        </div>
+        <div class="intro-detail-row">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          <span><strong>Open source.</strong> View the code, contribute, or fork it.
+            <a href="https://github.com/ruizrica/text-tools" target="_blank" rel="noopener" class="intro-link">github.com/ruizrica/text-tools</a>
+          </span>
+        </div>
+      </div>
+      <p class="intro-ephemeral">Session data is kept in memory only — refresh the page and everything is cleared.</p>
+      <div class="intro-actions">
+        <button class="intro-btn-primary" id="intro-dismiss">Get Started</button>
+      </div>
+      <label class="intro-no-show">
+        <input type="checkbox" id="intro-no-show-check">
+        <span>Don't show this again</span>
+      </label>
+    </div>
+  </div>
+
+  <!-- Toolbar -->
+  <nav class="toolbar" role="menubar" aria-label="Text operations">
+
+    <div class="menu-item">
+      <button class="menu-trigger" aria-haspopup="true" aria-expanded="false">Edit</button>
+      <div class="menu-dropdown" role="menu">
+        <div class="menu-section-label">Whitespace</div>
+        <button class="menu-action" data-op="removeExtraSpaces" role="menuitem">
+          <i data-lucide="space"></i>
+          <span>Remove Extra Spaces</span>
+        </button>
+        <button class="menu-action" data-op="removeExtraLineBreaks" role="menuitem">
+          <i data-lucide="wrap-text"></i>
+          <span>Remove Extra Line Breaks</span>
+        </button>
+        <button class="menu-action" data-op="trimWhitespace" role="menuitem">
+          <i data-lucide="scissors"></i>
+          <span>Trim Whitespace</span>
+        </button>
+        <button class="menu-action" data-op="removeAllLineBreaks" role="menuitem">
+          <i data-lucide="move-horizontal"></i>
+          <span>Remove All Line Breaks</span>
+        </button>
+        <div class="menu-divider"></div>
+        <button class="menu-action" data-op="findAndReplace" id="btn-find-replace" role="menuitem">
+          <i data-lucide="replace-all"></i>
+          <span>Find &amp; Replace</span>
+          <kbd class="menu-shortcut">&#8984;&#8679;H</kbd>
+        </button>
+      </div>
+    </div>
+
+    <div class="menu-item">
+      <button class="menu-trigger" aria-haspopup="true" aria-expanded="false">Transform</button>
+      <div class="menu-dropdown" role="menu">
+        <div class="menu-section-label">Case</div>
+        <button class="menu-action" data-op="toUpperCase" role="menuitem">
+          <i data-lucide="a-large-small"></i>
+          <span>UPPERCASE</span>
+        </button>
+        <button class="menu-action" data-op="toLowerCase" role="menuitem">
+          <i data-lucide="a-arrow-down"></i>
+          <span>lowercase</span>
+        </button>
+        <button class="menu-action" data-op="toTitleCase" role="menuitem">
+          <i data-lucide="heading"></i>
+          <span>Title Case</span>
+        </button>
+        <button class="menu-action" data-op="toCamelCase" role="menuitem">
+          <i data-lucide="case-sensitive"></i>
+          <span>camelCase</span>
+        </button>
+        <div class="menu-divider"></div>
+        <div class="menu-section-label">Encoding</div>
+        <button class="menu-action" data-op="urlEncode" role="menuitem">
+          <i data-lucide="link"></i>
+          <span>URL Encode</span>
+        </button>
+        <button class="menu-action" data-op="urlDecode" role="menuitem">
+          <i data-lucide="unlink"></i>
+          <span>URL Decode</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="menu-item">
+      <button class="menu-trigger" aria-haspopup="true" aria-expanded="false">Sort</button>
+      <div class="menu-dropdown" role="menu">
+        <button class="menu-action" data-op="sortLinesAZ" role="menuitem">
+          <i data-lucide="arrow-down-a-z"></i>
+          <span>Sort A &rarr; Z</span>
+        </button>
+        <button class="menu-action" data-op="sortLinesZA" role="menuitem">
+          <i data-lucide="arrow-down-z-a"></i>
+          <span>Sort Z &rarr; A</span>
+        </button>
+        <div class="menu-divider"></div>
+        <button class="menu-action" data-op="removeDuplicateLines" role="menuitem">
+          <i data-lucide="list-x"></i>
+          <span>Remove Duplicates</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Pinned right controls -->
+    <div class="toolbar-group toolbar-group-right">
+      <button class="tool-btn" id="btn-history" title="View history (Ctrl+Y)" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+          <circle cx="12" cy="12" r="10"/>
+          <polyline points="12 6 12 12 16 14"/>
+        </svg>
+        <span class="tool-label">History</span>
+      </button>
+      <button class="tool-btn" id="btn-layout-toggle" title="Toggle layout">
+        <i data-lucide="columns-2" id="layout-icon"></i>
+        <span class="tool-label">Layout</span>
+      </button>
+    </div>
+
+  </nav>
+
+  <!-- Find and Replace Bar -->
+  <div class="find-replace-bar" id="find-replace-bar" hidden>
+    <div class="find-replace-inner">
+      <input type="text" id="find-input" class="fr-input" placeholder="Find..." spellcheck="false">
+      <input type="text" id="replace-input" class="fr-input" placeholder="Replace with..." spellcheck="false">
+      <label class="fr-toggle" title="Use regular expressions">
+        <input type="checkbox" id="fr-regex">
+        <span class="fr-toggle-label">.*</span>
+      </label>
+      <label class="fr-toggle" title="Case sensitive">
+        <input type="checkbox" id="fr-case" checked>
+        <span class="fr-toggle-label">Aa</span>
+      </label>
+      <button class="fr-apply-btn" id="fr-apply" title="Apply replacement">Apply</button>
+      <button class="fr-close-btn" id="fr-close" title="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Stats Bar -->
+  <div class="stats-bar" id="stats-bar">
+    <span class="stat" id="stat-chars">0 characters</span>
+    <span class="stat-divider"></span>
+    <span class="stat" id="stat-words">0 words</span>
+    <span class="stat-divider"></span>
+    <span class="stat" id="stat-lines">0 lines</span>
+  </div>
+
+  <!-- History Panel -->
+  <section class="history-panel" id="history-panel" hidden>
+    <div class="history-header">
+      <div class="history-header-left">
+        <span class="history-title">History</span>
+        <span class="history-count" id="history-count">0</span>
+      </div>
+      <button class="history-close" id="history-close" title="Close history">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="history-col-labels">
+      <span class="history-label-time">Time</span>
+      <span class="history-label-original">Original</span>
+      <span class="history-label-ops">Operations</span>
+      <span class="history-label-result">Result</span>
+    </div>
+    <div class="history-entries" id="history-entries"></div>
+    <div class="history-footer">
+      <button class="history-btn history-btn-clear" id="history-clear-all">Clear History</button>
+      <button class="history-btn history-btn-restore" id="history-restore" disabled>Restore</button>
+    </div>
+  </section>
+
+  <!-- Main Panes -->
+  <main class="panes" id="panes">
+
+    <!-- Original Pane -->
+    <section class="pane" id="pane-original">
+      <div class="pane-header">
+        <span class="pane-title">Original</span>
+        <div class="pane-controls">
+          <button class="pane-btn" data-action="copy" data-pane="original" title="Copy to clipboard">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+          </button>
+          <button class="pane-btn" data-action="clear" data-pane="original" title="Clear">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="history-preview-banner" id="preview-banner-original" hidden>
+        Previewing history entry
+      </div>
+      <textarea class="pane-textarea" id="input-original" placeholder="Paste your text here..." spellcheck="false"></textarea>
+    </section>
+
+    <!-- Result Pane -->
+    <section class="pane" id="pane-result">
+      <div class="pane-header">
+        <span class="pane-title">Result</span>
+        <div class="pane-controls">
+          <button class="pane-btn diff-toggle" id="btn-diff-toggle" data-active="false" title="Toggle diff view">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 3v18"/>
+              <path d="M3 12h18"/>
+              <path d="M8 8l-4 4 4 4"/>
+              <path d="M16 8l4 4-4 4"/>
+            </svg>
+          </button>
+          <button class="pane-btn" data-action="copy" data-pane="result" title="Copy to clipboard">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+          </button>
+          <button class="pane-btn" data-action="clear" data-pane="result" title="Clear">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="effects-bar" id="effects-bar" hidden>
+        <span class="effects-label">Effects:</span>
+        <div class="effects-list" id="effects-list"></div>
+        <button class="effects-clear" id="effects-clear" title="Clear all effects">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div class="history-preview-banner" id="preview-banner-result" hidden>
+        Click Restore to use this result
+      </div>
+      <textarea class="pane-textarea" id="input-result" placeholder="Result will appear here..." spellcheck="false"></textarea>
+      <div class="diff-overlay" id="diff-overlay" hidden></div>
+    </section>
+
+    <!-- Swap Button (overlays on pane divider) -->
+    <div class="swap-control">
+      <button class="swap-btn" id="btn-swap" title="Swap: move result to original">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="17 1 21 5 17 9"/>
+          <path d="M3 11V9a4 4 0 0 1 4-4h14"/>
+          <polyline points="7 23 3 19 7 15"/>
+          <path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+        </svg>
+      </button>
+    </div>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="app-footer">
+    <div class="footer-left">
+      <a href="https://ruizrica.io/" class="footer-link" target="_blank" rel="noopener">Ricardo Ruiz 2026</a>
+    </div>
+    <img src="assets/texttools.png" alt="Text Tools" class="footer-logo">
+  </footer>
+
+  <script src="operations.js"></script>
+  <script src="diff.js"></script>
+  <script src="history.js"></script>
+  <script src="app.js"></script>
+  <script data-name="BMC-Widget" data-cfasync="false" src="https://cdnjs.buymeacoffee.com/1.0.0/widget.prod.min.js" data-id="ruizrica" data-description="Support me on Buy me a coffee!" data-message="" data-color="#5F7FFF" data-position="Right" data-x_margin="18" data-y_margin="78"></script>
+
+</body>
+</html>

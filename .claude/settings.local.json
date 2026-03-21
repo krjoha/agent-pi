@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__plugin_context-mode_context-mode__execute",
+      "mcp__plugin_context-mode_context-mode__execute_file",
+      "Bash(git ls-tree:*)",
+      "Bash(pi list:*)",
+      "Bash(pi install:*)"
+    ]
+  }
+}

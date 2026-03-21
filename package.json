@@ -1,0 +1,22 @@
+{
+  "name": "agent-pi",
+  "private": true,
+  "version": "2.0.0",
+  "description": "Multi-agent orchestration suite for Pi — 6 modes, 43 extensions, 11 themes",
+  "keywords": ["pi-package"],
+  "pi": {
+    "extensions": ["./extensions"],
+    "skills": ["./skills"],
+    "themes": ["./themes"],
+    "prompts": ["./prompts"]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*",
+    "@mariozechner/pi-agent-core": "*",
+    "@sinclair/typebox": "*"
+  },
+  "dependencies": {
+    "yaml": "^2.8.2"
+  }
+}
