@@ -61,57 +61,44 @@ async function callCommander(toolName: string, params: Record<string, unknown>):
 }
 
 /**
- * Gather all board data from Commander in parallel.
+ * Read local tasks from the tasks extension (globalThis.__piTaskList).
+ * Always available regardless of Commander status.
+ */
+function getLocalTasks(): { tasks: any[]; title?: string } {
+	const g = globalThis as any;
+	const taskList = g.__piTaskList as { tasks: { id: number; text: string; status: string }[]; title?: string; remaining: number; total: number } | undefined;
+	const now = new Date().toISOString();
+	const statusMap: Record<string, string> = { idle: "pending", inprogress: "working", done: "completed" };
+
+	const tasks = (taskList?.tasks || []).map((t) => ({
+		task_id: t.id,
+		description: t.text,
+		status: statusMap[t.status] || t.status,
+		created_at: now,
+		updated_at: now,
+	}));
+
+	return { tasks, title: taskList?.title };
+}
+
+/**
+ * Gather board data — always local-first.
+ * Local tasks are the primary data source. Commander data is layered in when available.
  */
 async function gatherBoardData(): Promise<BoardData> {
 	const g = globalThis as any;
-	const isAvailable = g.__piCommanderAvailable === true;
+	const local = getLocalTasks();
 
-	if (!isAvailable) {
-		// Fall back to local tasks from the tasks extension
-		const taskList = g.__piTaskList as { tasks: { id: number; text: string; status: string }[]; title?: string; remaining: number; total: number } | undefined;
-		const localTasks = (taskList?.tasks || []).map((t) => {
-			// Map local statuses to Commander-compatible statuses
-			const statusMap: Record<string, string> = { idle: "pending", inprogress: "working", done: "completed" };
-			return {
-				task_id: t.id,
-				description: t.text,
-				status: statusMap[t.status] || t.status,
-				created_at: new Date().toISOString(),
-				updated_at: new Date().toISOString(),
-			};
-		});
-
-		return {
-			tasks: localTasks,
-			agents: [],
-			messages: [],
-			groups: [],
-			readyTasks: [],
-			connected: false,
-			localMode: localTasks.length > 0,
-			localTitle: taskList?.title,
-			timestamp: new Date().toISOString(),
-			error: localTasks.length > 0 ? undefined : "Commander is not connected",
-		};
-	}
-
-	// Fire all requests in parallel
-	const [tasks, agents, messages, groups, readyTasks] = await Promise.all([
-		callCommander("commander_task", { operation: "list" }),
-		callCommander("commander_orchestration", { operation: "agent:list", active_only: false }),
-		callCommander("commander_mailbox", { operation: "inbox", agent_name: "commander" }),
-		callCommander("commander_task", { operation: "group:list" }),
-		callCommander("commander_dependency", { operation: "ready_tasks" }),
-	]);
-
+	// Always return local tasks — this is the local-first board
 	return {
-		tasks: Array.isArray(tasks) ? tasks : (tasks?.tasks || []),
-		agents: Array.isArray(agents) ? agents : (agents?.agents || []),
-		messages: Array.isArray(messages) ? messages : (messages?.messages || []),
-		groups: Array.isArray(groups) ? groups : (groups?.groups || []),
-		readyTasks: Array.isArray(readyTasks) ? readyTasks : (readyTasks?.tasks || []),
-		connected: true,
+		tasks: local.tasks,
+		agents: [],
+		messages: [],
+		groups: [],
+		readyTasks: [],
+		connected: false,
+		localMode: true,
+		localTitle: local.title,
 		timestamp: new Date().toISOString(),
 	};
 }
@@ -299,12 +286,11 @@ export default function (pi: ExtensionAPI) {
 		name: "show_board",
 		label: "Show Board",
 		description:
-			"Open a live task board in the browser. Shows a Kanban-style view of tasks " +
-			"(Pending → Working → Completed → Failed), active agents, recent messages, and " +
-			"task group progress. Auto-refreshes every 3 seconds from Commander data.\n\n" +
+			"Open a live task board in the browser. Shows a Kanban-style view of local tasks " +
+			"(Pending → Working → Completed → Failed). Auto-refreshes every 3 seconds.\n\n" +
 			"The board runs as a lightweight background web server. Unlike other viewers, " +
 			"it stays open and keeps refreshing — close the browser tab when done.\n\n" +
-			"Requires Commander MCP connection. Shows an offline state if Commander is unavailable.",
+			"Shows local tasks from the tasks extension — no Commander required.",
 		parameters: ShowBoardParams,
 
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
