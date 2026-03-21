@@ -338,14 +338,15 @@ export function generateWebChatHTML(opts: { port: number; logoDataUri?: string }
 
   /* ── Terminal View ────────────────────────────────── */
   #terminal-view {
-    display: none; flex: 1; overflow-y: auto;
+    display: none; overflow-y: auto;
     padding: 12px 16px; background: #050810;
+    min-height: 0;
   }
-  #terminal-view.visible { display: block; }
+  #terminal-view.visible { display: flex; flex-direction: column; flex: 1; }
   #terminal-output {
     font-family: var(--mono); font-size: 12px; line-height: 1.6;
     color: var(--text-muted); white-space: pre-wrap; word-break: break-all;
-    margin: 0;
+    margin: 0; flex: 1;
   }
   #terminal-output .t-tool { color: var(--blue-bright); }
   #terminal-output .t-done { color: var(--success); }
