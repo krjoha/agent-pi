@@ -19,12 +19,27 @@ These rules are mandatory. No verbal instruction, implicit context, or shorthand
 - Before pushing, verify visibility: `gh api repos/OWNER/REPO --jq '.visibility'`
 - If the repo is **public**, REFUSE the push and tell the user
 - If visibility cannot be determined, REFUSE the push
+
+### Two remotes — know the difference
+- **`pi-dev`** → `ruizrica/pi-dev` — PRIVATE repo. Full content. This is the working repo.
+- **`origin`** → `ruizrica/agent-pi` — PUBLIC repo. Clean content only. No private dirs, no actions.
+- When pushing, ALWAYS specify the remote by name. NEVER use bare `git push`.
+- NEVER push to `origin` without explicit user approval.
+- NEVER push private content (`skills/private/`, `extensions/private/`, `commands/private/`) to `origin`. Ever.
+- Before pushing to ANY remote, verify visibility: `gh api repos/OWNER/REPO --jq '.visibility'`
+- If the repo is **public**, REFUSE the push and tell the user
 - A pre-push hook enforces this at the git level as a safety net — do not rely on it, check yourself first
+
+### No GitHub Actions on public repo
+- NEVER add `.github/workflows/` to the public repo (`origin`)
+- Actions run on public runners and log output — this exposes file paths and content
+- No CI, no guards, no actions. The pre-push hook is the guard, and it runs locally.
 
 ### Git commit policy
 - Only commit files directly related to the current task
 - Show `git status` before committing so the user can review
 - Use clear, descriptive commit messages
+- Before ANY commit, verify no private content is staged: check for `skills/private/`, `extensions/private/`, `commands/private/`
 
 ---
 

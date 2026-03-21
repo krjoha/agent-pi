@@ -48,7 +48,7 @@ export function formatTokens(n: number): string {
 function thinkingIndicator(level: string | undefined, theme: any): string {
 	const label = level || "off";
 	const color = label === "off" ? "dim" : label === "high" || label === "xhigh" ? "warning" : "accent";
-	return theme.fg("dim", "thinking:") + theme.fg(color, label);
+	return theme.fg("dim", "thinking: ") + theme.fg(color, theme.bold(label));
 }
 
 /** Last two path components: "Github-Work/pi-vs-claude-code" */
