@@ -836,6 +836,93 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
+	pi.registerCommand("code-review", {
+		description: "Multi-pass code review — parallel context gathering, split review, remediation, validation, test verification, and final report",
+		handler: async (args, ctx) => {
+			widgetCtx = ctx;
+			const inlineScope = (args || "").trim();
+
+			// Find code-review chain
+			const codeReviewChain = chains.find(c => c.name === "code-review");
+			if (!codeReviewChain) {
+				ctx.ui.notify("code-review chain not found in .pi/agents/agent-chain.yaml", "error");
+				return;
+			}
+
+			let task: string;
+
+			if (inlineScope) {
+				// User passed scope inline: /code-review src/auth/
+				task = `Review the code. Scope: ${inlineScope}`;
+			} else {
+				// Interactive scope picker
+				const scopeOptions = [
+					"Last commit (git diff HEAD~1)",
+					"Unstaged changes (git diff)",
+					"Staged changes (git diff --cached)",
+					"Last 3 commits (git diff HEAD~3)",
+					"Specific file or directory",
+					"Full codebase",
+				];
+
+				const choice = await ctx.ui.select("What do you want to review?", scopeOptions);
+				if (choice === undefined) return;
+
+				switch (choice) {
+					case scopeOptions[0]:
+						task = "Review the changes in the last commit. Use `git diff HEAD~1` to identify changed files.";
+						break;
+					case scopeOptions[1]:
+						task = "Review the current unstaged changes. Use `git diff` to identify changed files.";
+						break;
+					case scopeOptions[2]:
+						task = "Review the staged changes. Use `git diff --cached` to identify changed files.";
+						break;
+					case scopeOptions[3]:
+						task = "Review the changes in the last 3 commits. Use `git diff HEAD~3` to identify changed files.";
+						break;
+					case scopeOptions[4]: {
+						const path = await ctx.ui.input("Enter file or directory path:", "src/");
+						if (!path) return;
+						task = `Review the code at: ${path}`;
+						break;
+					}
+					case scopeOptions[5]:
+						task = "Review the full codebase. Scan all source files.";
+						break;
+					default:
+						task = "Review the current unstaged changes. Use `git diff` to identify changed files.";
+				}
+			}
+
+			ctx.ui.notify(`Starting code review...`, "info");
+
+			// Activate the code-review chain
+			activateChain(codeReviewChain);
+
+			// Run the chain
+			const result = await runChain(task, ctx);
+
+			// Hide chain widget
+			widgetCtx.ui.setWidget("agent-chain", undefined);
+
+			if (!result.success) {
+				ctx.ui.notify(`Code review failed: ${result.output.slice(0, 200)}`, "error");
+				return;
+			}
+
+			// Write report file
+			const reportPath = join(ctx.cwd, ".pi", "code-review-report.md");
+			const reportDir = dirname(reportPath);
+			if (!existsSync(reportDir)) {
+				mkdirSync(reportDir, { recursive: true });
+			}
+			writeFileSync(reportPath, result.output, "utf-8");
+
+			ctx.ui.notify(`Code review complete! Report saved to ${reportPath}`, "success");
+		},
+	});
+
 	// ── System Prompt Override ───────────────────
 
 	pi.on("before_agent_start", async (_event, _ctx) => {

@@ -8,11 +8,23 @@
       "provider": "x-ai",
       "model": "grok-4.1-fast"
     },
+    "ranger": {
+      "provider": "openai-codex",
+      "model": "gpt-5.4"
+    },
     "builder": {
       "provider": "anthropic",
       "model": "claude-haiku-4-5"
     },
+    "paladin": {
+      "provider": "anthropic",
+      "model": "claude-opus-4-6"
+    },
     "reviewer": {
+      "provider": "anthropic",
+      "model": "claude-opus-4-6"
+    },
+    "warden": {
       "provider": "anthropic",
       "model": "claude-opus-4-6"
     },
@@ -24,7 +36,15 @@
       "provider": "openai-codex",
       "model": "gpt-5.4"
     },
+    "herald": {
+      "provider": "openai-codex",
+      "model": "gpt-5.4"
+    },
     "red-team": {
+      "provider": "openai-codex",
+      "model": "gpt-5.4"
+    },
+    "knight": {
       "provider": "openai-codex",
       "model": "gpt-5.4"
     },
