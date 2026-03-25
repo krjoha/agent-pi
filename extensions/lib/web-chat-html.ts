@@ -1,5 +1,5 @@
 // ABOUTME: Self-contained HTML template for the web chat interface.
-// ABOUTME: Mobile-first responsive design with SSE streaming, PIN auth, dark blue theme, full-width.
+// ABOUTME: Mobile-first responsive design with WebSocket streaming, PIN auth, dark blue theme, full-width.
 
 export function generateWebChatHTML(opts: { port: number; logoDataUri?: string }): string {
 	const logo = opts.logoDataUri || "";
@@ -517,7 +517,7 @@ export function generateWebChatHTML(opts: { port: number; logoDataUri?: string }
   function showChat() {
     pinScreen.classList.add('hidden');
     chatScreen.classList.add('visible');
-    connectSSE();
+    connectWS();
     inputEl.focus();
   }
 
@@ -534,7 +534,7 @@ export function generateWebChatHTML(opts: { port: number; logoDataUri?: string }
   }
 
   // ── Chat state ──────────────────────────────────────
-  let eventSource = null;
+  let ws = null;
   let connected = false;
   let busy = false;
   let currentStreamBubble = null;
@@ -890,73 +890,96 @@ export function generateWebChatHTML(opts: { port: number; logoDataUri?: string }
     statusDot.title = !connected ? 'Disconnected' : busy ? 'Working...' : 'Connected';
   }
 
-  // ── SSE ─────────────────────────────────────────────
-  function connectSSE() {
-    if (eventSource) { try { eventSource.close(); } catch {} }
+  // ── WebSocket ───────────────────────────────────────
+  function connectWS() {
+    if (ws) { try { ws.close(); } catch {} }
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const tokenParam = authToken ? '?token=' + encodeURIComponent(authToken) : '';
-    eventSource = new EventSource('/events' + tokenParam);
-
-    eventSource.addEventListener('connected', (e) => {
+    ws = new WebSocket(proto + '//' + location.host + '/ws' + tokenParam);
+    
+    ws.onopen = function() {
       connected = true; reconnectDelay = 1000;
       connBanner.classList.remove('visible'); updateStatusDot();
-      const data = JSON.parse(e.data);
-      if (data.busy) setBusy(true);
-    });
-    eventSource.addEventListener('user_message', () => {});
-    eventSource.addEventListener('assistant_message', (e) => {
-      const data = JSON.parse(e.data);
-      if (welcomeEl) welcomeEl.style.display = 'none';
-      hideThinking();
-      // If there's an active stream bubble, replace it with the final content
-      if (currentStreamBubble) {
-        currentStreamBubble.innerHTML = renderMarkdown(data.content);
-        const timeDiv = document.createElement('div');
-        timeDiv.className = 'message-time';
-        timeDiv.textContent = formatTime(data.timestamp);
-        currentStreamBubble.parentElement.appendChild(timeDiv);
-        currentStreamBubble = null; currentStreamText = '';
-      } else {
-        // No stream was active — create a fresh message
-        const div = document.createElement('div'); div.className = 'message';
-        div.innerHTML = '<div class="message-label assistant-label">Pi</div>' +
-          '<div class="message-bubble assistant-bubble">' + renderMarkdown(data.content) + '</div>' +
-          '<div class="message-time">' + formatTime(data.timestamp) + '</div>';
-        messagesEl.appendChild(div);
+    };
+    
+    ws.onmessage = function(e) {
+      try {
+        const msg = JSON.parse(e.data);
+        const event = msg.event;
+        const data = msg.data;
+        
+        switch (event) {
+          case 'connected':
+            if (data.busy) setBusy(true);
+            break;
+          case 'user_message':
+            break;
+          case 'assistant_message':
+            if (welcomeEl) welcomeEl.style.display = 'none';
+            hideThinking();
+            if (currentStreamBubble) {
+              currentStreamBubble.innerHTML = renderMarkdown(data.content);
+              var timeDiv = document.createElement('div');
+              timeDiv.className = 'message-time';
+              timeDiv.textContent = formatTime(data.timestamp);
+              currentStreamBubble.parentElement.appendChild(timeDiv);
+              currentStreamBubble = null; currentStreamText = '';
+            } else {
+              var div = document.createElement('div'); div.className = 'message';
+              div.innerHTML = '<div class="message-label assistant-label">Pi</div>' +
+                '<div class="message-bubble assistant-bubble">' + renderMarkdown(data.content) + '</div>' +
+                '<div class="message-time">' + formatTime(data.timestamp) + '</div>';
+              messagesEl.appendChild(div);
+            }
+            setBusy(false);
+            scrollToBottom(true);
+            break;
+          case 'text_delta':
+            hideThinking(); appendToStream(data.text);
+            break;
+          case 'tool_start':
+            hideThinking(); addToolIndicator(data.name);
+            break;
+          case 'tool_end':
+            removeToolIndicator();
+            break;
+          case 'done':
+            hideThinking(); finalizeStream(); setBusy(false);
+            break;
+          case 'subagent_start':
+            addSystemMessage('Agents spawned: ' + data.names + ' (' + data.count + ')');
+            break;
+          case 'error_event':
+            hideThinking(); addSystemMessage(data.message); setBusy(false);
+            break;
+          case 'status':
+            setBusy(data.busy);
+            break;
+          case 'terminal_output':
+            appendTerminalLine(data.line);
+            break;
+          case 'reset':
+            messagesEl.innerHTML = '';
+            if (welcomeEl) { messagesEl.appendChild(welcomeEl); welcomeEl.style.display = ''; }
+            currentStreamBubble = null; currentStreamText = ''; setBusy(false);
+            terminalOutput.innerHTML = '';
+            break;
+        }
+      } catch (err) {
+        console.error('WS message parse error:', err);
       }
-      setBusy(false);
-      scrollToBottom(true);
-    });
-    eventSource.addEventListener('text_delta', (e) => {
-      hideThinking(); appendToStream(JSON.parse(e.data).text);
-    });
-    eventSource.addEventListener('tool_start', (e) => {
-      hideThinking(); addToolIndicator(JSON.parse(e.data).name);
-    });
-    eventSource.addEventListener('tool_end', () => { removeToolIndicator(); });
-    eventSource.addEventListener('done', () => { hideThinking(); finalizeStream(); setBusy(false); });
-    eventSource.addEventListener('subagent_start', (e) => {
-      const data = JSON.parse(e.data);
-      addSystemMessage('Agents spawned: ' + data.names + ' (' + data.count + ')');
-    });
-    eventSource.addEventListener('error_event', (e) => {
-      hideThinking(); addSystemMessage(JSON.parse(e.data).message); setBusy(false);
-    });
-    eventSource.addEventListener('status', (e) => { setBusy(JSON.parse(e.data).busy); });
-    eventSource.addEventListener('terminal_output', (e) => {
-      appendTerminalLine(JSON.parse(e.data).line);
-    });
-    eventSource.addEventListener('reset', () => {
-      messagesEl.innerHTML = '';
-      if (welcomeEl) { messagesEl.appendChild(welcomeEl); welcomeEl.style.display = ''; }
-      currentStreamBubble = null; currentStreamText = ''; setBusy(false);
-      terminalOutput.innerHTML = '';
-    });
-    eventSource.onerror = () => {
+    };
+    
+    ws.onclose = function() {
       connected = false; updateStatusDot(); connBanner.classList.add('visible');
       if (reconnectTimer) clearTimeout(reconnectTimer);
-      reconnectTimer = setTimeout(() => {
-        reconnectDelay = Math.min(reconnectDelay * 1.5, 10000); connectSSE();
+      reconnectTimer = setTimeout(function() {
+        reconnectDelay = Math.min(reconnectDelay * 1.5, 10000);
+        connectWS();
       }, reconnectDelay);
+    };
+    
+    ws.onerror = function() {
     };
   }
 

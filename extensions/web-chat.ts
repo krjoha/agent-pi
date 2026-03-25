@@ -1,5 +1,6 @@
 // ABOUTME: Web Chat Extension — opens a LAN-accessible chat interface that relays to the main Pi session.
 // ABOUTME: Phone acts as a thin client — messages are injected into THIS session via pi.sendUserMessage().
+// ABOUTME: Uses WebSocket for reliable streaming through cloudflared tunnels.
 
 import type { ExtensionAPI, ExtensionContext, MessageUpdateEvent, ToolExecutionStartEvent, ToolExecutionEndEvent } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
@@ -11,6 +12,7 @@ import { execSync, spawn, type ChildProcess } from "node:child_process";
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
 import { networkInterfaces } from "node:os";
 import { randomInt } from "node:crypto";
+import { WebSocketServer, WebSocket as WS } from "ws";
 import qrTerminal from "qrcode-terminal";
 import { outputLine } from "./lib/output-box.ts";
 import { applyExtensionDefaults } from "./lib/themeMap.ts";
@@ -27,9 +29,9 @@ interface ChatMessage {
 	toolCalls?: string[];
 }
 
-interface SSEClient {
+interface WSClient {
 	id: number;
-	res: ServerResponse;
+	ws: WS;
 }
 
 // ── LAN IP Detection ─────────────────────────────────────────────────
@@ -62,7 +64,6 @@ function startTunnel(localPort: number): Promise<{ url: string; proc: ChildProce
 		const proc = spawn("cloudflared", [
 			"tunnel",
 			"--url", `http://127.0.0.1:${localPort}`,
-			"--no-chunked-encoding",
 		], {
 			stdio: ["ignore", "pipe", "pipe"],
 		});
@@ -180,30 +181,19 @@ function printRemoteQRBlock(qr: string, url: string, pin: string): void {
 	w("\n\n");
 }
 
-// ── SSE Helpers ──────────────────────────────────────────────────────
+// ── WebSocket Helpers ────────────────────────────────────────────────
 
-function sendSSE(client: SSEClient, event: string, data: any): void {
+function sendWS(client: WSClient, event: string, data: any): void {
 	try {
-		client.res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-		// Force-flush: Node's HTTP response buffers writes internally.
-		// Without an explicit flush, SSE events sit in the buffer and never
-		// reach the remote client. We use cork()+uncork() on the underlying
-		// TCP socket — scheduling uncork() on nextTick forces a coalesced
-		// flush of all buffered data to the wire. This replicates the flush
-		// effect that console.error() calls accidentally provided via
-		// synchronous stderr I/O in the original working version.
-		const socket = client.res.socket;
-		if (socket && !socket.destroyed) {
-			socket.setNoDelay(true);
-			socket.cork();
-			process.nextTick(() => socket.uncork());
+		if (client.ws.readyState === WS.OPEN) {
+			client.ws.send(JSON.stringify({ event, data }));
 		}
 	} catch {}
 }
 
-function broadcastSSE(clients: Map<number, SSEClient>, event: string, data: any): void {
+function broadcastWS(clients: Map<number, WSClient>, event: string, data: any): void {
 	for (const client of clients.values()) {
-		sendSSE(client, event, data);
+		sendWS(client, event, data);
 	}
 }
 
@@ -213,7 +203,7 @@ const TERMINAL_BUFFER_MAX = 200;
 
 class SessionBridge {
 	private piApi: ExtensionAPI;
-	private clients: Map<number, SSEClient>;
+	private clients: Map<number, WSClient>;
 	private busy = false;
 	private history: ChatMessage[] = [];
 	private textBuffer: string[] = [];
@@ -221,7 +211,7 @@ class SessionBridge {
 	private terminalLines: string[] = [];
 	private pendingFromPhone = false;
 
-	constructor(piApi: ExtensionAPI, clients: Map<number, SSEClient>) {
+	constructor(piApi: ExtensionAPI, clients: Map<number, WSClient>) {
 		this.piApi = piApi;
 		this.clients = clients;
 	}
@@ -247,14 +237,14 @@ class SessionBridge {
 		if (this.terminalLines.length > TERMINAL_BUFFER_MAX) {
 			this.terminalLines.shift();
 		}
-		broadcastSSE(this.clients, "terminal_output", { line });
+		broadcastWS(this.clients, "terminal_output", { line });
 	}
 
 	// ── Called from HTTP /send endpoint ──
 
 	sendMessage(text: string): void {
 		if (this.busy) {
-			broadcastSSE(this.clients, "error_event", {
+			broadcastWS(this.clients, "error_event", {
 				message: "Agent is busy. Wait for the current response to finish.",
 			});
 			return;
@@ -270,14 +260,14 @@ class SessionBridge {
 			source: "phone",
 		};
 		this.history.push(userMsg);
-		broadcastSSE(this.clients, "user_message", userMsg);
+		broadcastWS(this.clients, "user_message", userMsg);
 
 		// Inject into main Pi session — this triggers a turn
 		// Use deliverAs: "followUp" so it works even when the agent is busy
 		try {
 			this.piApi.sendUserMessage(text, { deliverAs: "followUp" });
 		} catch (err: any) {
-			broadcastSSE(this.clients, "error_event", {
+			broadcastWS(this.clients, "error_event", {
 				message: "Failed to send message: " + (err?.message || "Unknown error"),
 			});
 			this.busy = false;
@@ -291,13 +281,13 @@ class SessionBridge {
 		this.textBuffer = [];
 		this.toolNames = [];
 		this.pushTerminalLine("[start] Processing...");
-		broadcastSSE(this.clients, "status", { busy: true });
+		broadcastWS(this.clients, "status", { busy: true });
 	}
 
 	onAgentEnd(): void {
 		this.busy = false;
 		this.pendingFromPhone = false;
-		broadcastSSE(this.clients, "status", { busy: false });
+		broadcastWS(this.clients, "status", { busy: false });
 	}
 
 	onMessageUpdate(event: MessageUpdateEvent): void {
@@ -307,7 +297,7 @@ class SessionBridge {
 		if (delta.type === "text_delta") {
 			const text = (delta as any).delta || "";
 			this.textBuffer.push(text);
-			broadcastSSE(this.clients, "text_delta", { text });
+			broadcastWS(this.clients, "text_delta", { text });
 		} else if (delta.type === "thinking_start") {
 			this.pushTerminalLine("[think] Reasoning...");
 		} else if (delta.type === "text_start") {
@@ -348,14 +338,14 @@ class SessionBridge {
 				toolCalls: this.toolNames.length > 0 ? [...this.toolNames] : undefined,
 			};
 			this.history.push(assistantMsg);
-			broadcastSSE(this.clients, "assistant_message", assistantMsg);
+			broadcastWS(this.clients, "assistant_message", assistantMsg);
 		}
 
 		// ALWAYS signal completion — matches the working version.
 		// This fires for every message (including tool-use), which resets
 		// the phone's busy state. The phone handles this gracefully.
-		broadcastSSE(this.clients, "done", {});
-		broadcastSSE(this.clients, "status", { busy: false });
+		broadcastWS(this.clients, "done", {});
+		broadcastWS(this.clients, "status", { busy: false });
 		this.busy = false;
 		this.textBuffer = [];
 		this.toolNames = [];
@@ -364,7 +354,7 @@ class SessionBridge {
 	onToolStart(event: ToolExecutionStartEvent): void {
 		const name = event.toolName || "tool";
 		this.toolNames.push(name);
-		broadcastSSE(this.clients, "tool_start", { name });
+		broadcastWS(this.clients, "tool_start", { name });
 		this.pushTerminalLine(`[tool] ${name}`);
 
 		// Detect subagent spawning
@@ -374,11 +364,11 @@ class SessionBridge {
 				const count = args.agents.length;
 				const names = args.agents.map((a: any) => a.name || a.summary || "agent").join(", ");
 				this.pushTerminalLine(`[agent] Spawning ${count} agents: ${names}`);
-				broadcastSSE(this.clients, "subagent_start", { count, names });
+				broadcastWS(this.clients, "subagent_start", { count, names });
 			} else if (name === "subagent_create") {
 				const agentName = args?.name || args?.summary || "agent";
 				this.pushTerminalLine(`[agent] Spawning: ${agentName}`);
-				broadcastSSE(this.clients, "subagent_start", { count: 1, names: agentName });
+				broadcastWS(this.clients, "subagent_start", { count: 1, names: agentName });
 			}
 		}
 	}
@@ -386,7 +376,7 @@ class SessionBridge {
 	onToolEnd(event: ToolExecutionEndEvent): void {
 		const name = event.toolName || "tool";
 		const ok = !event.isError;
-		broadcastSSE(this.clients, "tool_end", {});
+		broadcastWS(this.clients, "tool_end", {});
 		this.pushTerminalLine(`[${ok ? "ok" : "err"}] ${name}`);
 	}
 
@@ -405,7 +395,7 @@ class SessionBridge {
 				source: "terminal",
 			};
 			this.history.push(userMsg);
-			broadcastSSE(this.clients, "user_message", userMsg);
+			broadcastWS(this.clients, "user_message", userMsg);
 		}
 		// Reset the pending flag after input is processed
 		if (this.pendingFromPhone) {
@@ -430,7 +420,7 @@ function startChatServer(
 	onShutdown: () => void,
 ): Promise<{ port: number; server: Server }> {
 	return new Promise((resolve) => {
-		const sseClients = bridge["clients"];
+		const wsClients = bridge["clients"];
 		let clientIdCounter = 0;
 		const logoDataUri = loadLogoBase64();
 		// Single-user lock: only one authenticated session at a time
@@ -458,7 +448,7 @@ function startChatServer(
 		function resetShutdownTimer() {
 			if (shutdownTimer) clearTimeout(shutdownTimer);
 			shutdownTimer = setTimeout(() => {
-				if (sseClients.size === 0) {
+				if (wsClients.size === 0) {
 					try { server.close(); } catch {}
 					onShutdown();
 				}
@@ -524,61 +514,6 @@ function startChatServer(
 				return;
 			}
 
-			// ── SSE Events Stream ────────────────────────────────
-			if (req.method === "GET" && url.pathname === "/events") {
-				resetShutdownTimer();
-				res.writeHead(200, {
-					"Content-Type": "text/event-stream",
-					"Cache-Control": "no-cache, no-store, must-revalidate",
-					"Pragma": "no-cache",
-					"Expires": "0",
-					"Connection": "keep-alive",
-					"X-Accel-Buffering": "no",
-				});
-				// Disable Nagle's algorithm and flush headers immediately
-				// so SSE events are delivered without buffering delay
-				res.flushHeaders();
-				if (res.socket) {
-					res.socket.setNoDelay(true);
-				}
-
-				const clientId = ++clientIdCounter;
-				const client: SSEClient = { id: clientId, res };
-				sseClients.set(clientId, client);
-
-				sendSSE(client, "connected", {
-					busy: bridge.isBusy(),
-					historyCount: bridge.getHistory().length,
-					relay: true,
-				});
-
-				// Send existing history
-				for (const msg of bridge.getHistory()) {
-					sendSSE(client, msg.role === "user" ? "user_message" : "assistant_message", msg);
-				}
-
-				// Send existing terminal history
-				if (bridge.getTerminalHistory().length === 0) {
-					// Send a welcome line so terminal isn't blank
-					sendSSE(client, "terminal_output", { line: "[info] Connected — activity will appear here" });
-				}
-				for (const line of bridge.getTerminalHistory()) {
-					sendSSE(client, "terminal_output", { line });
-				}
-
-				const pingInterval = setInterval(() => {
-					try { res.write(":ping\n\n"); } catch {}
-				}, 30000);
-
-				req.on("close", () => {
-					clearInterval(pingInterval);
-					sseClients.delete(clientId);
-					if (sseClients.size === 0) resetShutdownTimer();
-				});
-
-				return;
-			}
-
 			// ── Send Message (relay to main session) ─────────────
 			if (req.method === "POST" && url.pathname === "/send") {
 				let body = "";
@@ -609,7 +544,7 @@ function startChatServer(
 				res.end(JSON.stringify({
 					busy: bridge.isBusy(),
 					historyCount: bridge.getHistory().length,
-					clients: sseClients.size,
+					clients: wsClients.size,
 					relay: true,
 				}));
 				return;
@@ -642,6 +577,73 @@ function startChatServer(
 
 			res.writeHead(404);
 			res.end("Not found");
+		});
+
+		// WebSocket server for streaming
+		const wss = new WebSocketServer({ noServer: true });
+
+		server.on("upgrade", (req, socket, head) => {
+			const url = new URL(req.url || "/", `http://localhost`);
+			if (url.pathname !== "/ws") {
+				socket.destroy();
+				return;
+			}
+			// Validate auth token
+			if (!activeToken) { socket.destroy(); return; }
+			const qToken = url.searchParams.get("token");
+			const cookies = req.headers.cookie || "";
+			const match = cookies.match(/pi_token=([^;]+)/);
+			const cookieToken = match ? match[1] : null;
+			if (qToken !== activeToken && cookieToken !== activeToken) {
+				socket.destroy();
+				return;
+			}
+			wss.handleUpgrade(req, socket, head, (ws) => {
+				wss.emit("connection", ws, req);
+			});
+		});
+
+		wss.on("connection", (ws) => {
+			resetShutdownTimer();
+			const clientId = ++clientIdCounter;
+			const client: WSClient = { id: clientId, ws };
+			wsClients.set(clientId, client);
+
+			// Send initial state
+			sendWS(client, "connected", {
+				busy: bridge.isBusy(),
+				historyCount: bridge.getHistory().length,
+				relay: true,
+			});
+
+			// Send existing history
+			for (const msg of bridge.getHistory()) {
+				sendWS(client, msg.role === "user" ? "user_message" : "assistant_message", msg);
+			}
+
+			// Send existing terminal history
+			if (bridge.getTerminalHistory().length === 0) {
+				sendWS(client, "terminal_output", { line: "[info] Connected — activity will appear here" });
+			}
+			for (const line of bridge.getTerminalHistory()) {
+				sendWS(client, "terminal_output", { line });
+			}
+
+			// Ping to keep connection alive
+			const pingInterval = setInterval(() => {
+				try { if (ws.readyState === WS.OPEN) ws.ping(); } catch {}
+			}, 30000);
+
+			ws.on("close", () => {
+				clearInterval(pingInterval);
+				wsClients.delete(clientId);
+				if (wsClients.size === 0) resetShutdownTimer();
+			});
+
+			ws.on("error", () => {
+				clearInterval(pingInterval);
+				wsClients.delete(clientId);
+			});
 		});
 
 		server.listen(0, "0.0.0.0", () => {
@@ -722,9 +724,9 @@ export default function (pi: ExtensionAPI) {
 	async function launchChat(ctx: ExtensionContext, remote = false): Promise<LaunchResult> {
 		cleanupServer();
 
-		// Create the session bridge with shared SSE client map
-		const sseClients = new Map<number, SSEClient>();
-		const bridge = new SessionBridge(pi, sseClients);
+		// Create the session bridge with shared WebSocket client map
+		const wsClients = new Map<number, WSClient>();
+		const bridge = new SessionBridge(pi, wsClients);
 		activeBridge = bridge;
 
 		currentPIN = generatePIN();
