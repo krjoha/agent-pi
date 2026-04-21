@@ -1,10 +1,17 @@
 all:
   - scout
+  - ranger
   - planner
   - builder
+  - paladin
   - reviewer
+  - warden
+  - knight
   - tester
+  - herald
+  - documenter
   - red-team
+  - copilot-agent
   - cursor-agent
   - codex-agent
   - gemini-agent
@@ -15,6 +22,7 @@ all:
   - crush-agent
 
 toolkit:
+  - copilot-agent
   - cursor-agent
   - codex-agent
   - gemini-agent
@@ -26,10 +34,16 @@ toolkit:
 
 full:
   - scout
+  - ranger
   - planner
   - builder
+  - paladin
   - reviewer
+  - warden
+  - knight
   - tester
+  - herald
+  - documenter
 
 plan-build:
   - planner
@@ -42,8 +56,19 @@ investigate:
 
 quality:
   - reviewer
+  - warden
+  - knight
   - tester
+  - herald
   - red-team
+
+code-review:
+  - scout
+  - ranger
+  - warden
+  - knight
+  - paladin
+  - herald
 
 refactor:
   - scout
@@ -51,6 +76,7 @@ refactor:
 
 docs:
   - scout
+  - documenter
   - reviewer
 
 team-b-builders:
