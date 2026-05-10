@@ -5,52 +5,52 @@
   },
   "agents": {
     "scout": {
-      "provider": "x-ai",
-      "model": "grok-4.1-fast"
+      "provider": "sglang",
+      "model": "RedHatAI/Qwen3.6-35B-A3B-NVFP4"
     },
     "ranger": {
-      "provider": "openai-codex",
-      "model": "gpt-5.4"
+      "provider": "sglang",
+      "model": "RedHatAI/Qwen3.6-35B-A3B-NVFP4"
     },
     "builder": {
-      "provider": "anthropic",
-      "model": "claude-haiku-4-5"
-    },
-    "paladin": {
-      "provider": "anthropic",
-      "model": "claude-opus-4-6"
+      "provider": "sglang",
+      "model": "RedHatAI/Qwen3.6-35B-A3B-NVFP4"
     },
     "reviewer": {
-      "provider": "anthropic",
-      "model": "claude-opus-4-6"
-    },
-    "warden": {
-      "provider": "anthropic",
-      "model": "claude-opus-4-6"
-    },
-    "planner": {
-      "provider": "openai-codex",
-      "model": "gpt-5.4"
+      "provider": "sglang",
+      "model": "RedHatAI/Qwen3.6-35B-A3B-NVFP4"
     },
     "tester": {
-      "provider": "openai-codex",
-      "model": "gpt-5.4"
+      "provider": "sglang",
+      "model": "RedHatAI/Qwen3.6-35B-A3B-NVFP4"
     },
     "herald": {
-      "provider": "openai-codex",
-      "model": "gpt-5.4"
-    },
-    "red-team": {
-      "provider": "openai-codex",
-      "model": "gpt-5.4"
-    },
-    "knight": {
-      "provider": "openai-codex",
-      "model": "gpt-5.4"
+      "provider": "sglang",
+      "model": "RedHatAI/Qwen3.6-35B-A3B-NVFP4"
     },
     "rlm-subcall": {
-      "provider": "anthropic",
-      "model": "claude-haiku-4-5"
+      "provider": "sglang",
+      "model": "RedHatAI/Qwen3.6-35B-A3B-NVFP4"
+    },
+    "warden": {
+      "provider": "berget",
+      "model": "google/gemma-4-31b-it"
+    },
+    "planner": {
+      "provider": "berget",
+      "model": "google/gemma-4-31b-it"
+    },
+    "paladin": {
+      "provider": "berget",
+      "model": "openai/gpt-oss-120b"
+    },
+    "red-team": {
+      "provider": "berget",
+      "model": "mistralai/Mistral-Medium-3.5-128B"
+    },
+    "knight": {
+      "provider": "berget",
+      "model": "zai-org/GLM-4.7-FP8"
     }
   }
 }
