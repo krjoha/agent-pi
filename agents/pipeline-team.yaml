@@ -1,34 +1,5 @@
-plan-build-review:
-  description: "Plan, implement, and review — the standard development cycle"
-  review_max_loops: 3
-  phases:
-    - name: understand
-      description: "Clarify the task and gather context"
-      mode: interactive
-      agents:
-        - role: scout
-          task_template: "Explore the codebase and clarify the task. Summarize what needs to be done."
-    - name: plan
-      description: "Create an implementation plan"
-      mode: interactive
-      agents:
-        - role: planner
-          task_template: "Create a detailed implementation plan for: $INPUT"
-    - name: build
-      description: "Implement the plan"
-      mode: interactive
-      agents:
-        - role: builder
-          task_template: "Implement the following plan:\n\n$INPUT"
-    - name: review
-      description: "Review for quality and correctness"
-      mode: interactive
-      agents:
-        - role: reviewer
-          task_template: "Review this implementation for bugs, style, and correctness:\n\n$INPUT"
-
-plan-build:
-  description: "Plan then build — fast two-step without review"
+plan:
+  description: "Plan — produce a structured implementation plan for human approval"
   review_max_loops: 1
   phases:
     - name: plan
@@ -36,10 +7,73 @@ plan-build:
       mode: interactive
       agents:
         - role: planner
-          task_template: "Plan the implementation for: $INPUT"
+          task_template: "Produce a detailed, phased implementation plan for: $INPUT"
+
+plan-refine:
+  description: "Plan with built-in critique loop before presenting to human"
+  review_max_loops: 2
+  phases:
+    - name: plan
+      description: "Initial plan"
+      mode: interactive
+      agents:
+        - role: planner
+          task_template: "Produce a detailed, phased implementation plan for: $INPUT"
+    - name: critique
+      description: "Critique the plan"
+      mode: interactive
+      agents:
+        - role: reviewer
+          task_template: "Critique this plan for gaps, risks, and missed alternatives:\n\n$INPUT"
+    - name: revise
+      description: "Revise the plan"
+      mode: interactive
+      agents:
+        - role: planner
+          task_template: "Revise the plan addressing every critique:\n\n$INPUT"
+
+build-test:
+  description: "Implement and test — builder, tester, herald"
+  review_max_loops: 2
+  phases:
     - name: build
-      description: "Implement"
+      description: "Implement the approved plan"
       mode: interactive
       agents:
         - role: builder
-          task_template: "Implement this plan:\n\n$INPUT"
+          task_template: "Implement the following approved plan:\n\n$INPUT"
+    - name: test
+      description: "Write and run tests"
+      mode: interactive
+      agents:
+        - role: tester
+          task_template: "Write and run tests covering this implementation. Report results.\n\n$INPUT"
+    - name: verify
+      description: "Verify tests pass"
+      mode: interactive
+      agents:
+        - role: herald
+          task_template: "Verify all tests pass. Fix failures caused by the implementation.\n\n$INPUT"
+
+local-review:
+  description: "Step 8 — parallel AI source code review via local SGLang fork"
+  review_max_loops: 1
+  phases:
+    - name: scope
+      description: "Identify change scope and gather context"
+      mode: interactive
+      agents:
+        - role: scout
+          task_template: "Identify the change scope and gather architecture context for review: $INPUT"
+    - name: fork-review
+      description: "Parallel persona review via SGLang fork"
+      mode: interactive
+      agents:
+        - role: sgl-fork-runner
+          task_template: "Run the parallel persona review against the gathered context: $INPUT"
+    - name: synthesize
+      description: "Consolidate findings"
+      mode: interactive
+      agents:
+        - role: synthesizer
+          task_template: "Consolidate the parallel review outputs into a structured findings report: $INPUT"

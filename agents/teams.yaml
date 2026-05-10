@@ -13,6 +13,7 @@ all:
   - red-team
   - sgl-reviewer
   - synthesizer
+  - sgl-fork-runner
 
 full:
   - scout

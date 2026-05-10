@@ -221,7 +221,7 @@ The updated `agents/models.json` should reflect the following reasoning:
 
 | Role | Proposed Provider | Proposed Model | Rationale |
 |---|---|---|---|
-| default | anthropic | claude-haiku-4-5-20251001 | unchanged; catch-all for anything not in the map |
+| default | sglang | RedHatAI/Qwen3.6-35B-A3B-NVFP4 | catch-all for any agent role not explicitly mapped — must be Berget or SGLang, never Anthropic |
 | scout | sglang | RedHatAI/Qwen3.6-35B-A3B-NVFP4 | fast prefill + radix cache → codebase exploration reuses system prompt KV on every call |
 | ranger | sglang | RedHatAI/Qwen3.6-35B-A3B-NVFP4 | DRY/pattern analysis reads many files; prefix caching compounds across a session |
 | builder | sglang | RedHatAI/Qwen3.6-35B-A3B-NVFP4 | code generation with native XGrammar tool-call enforcement |

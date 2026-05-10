@@ -1,7 +1,7 @@
 {
   "default": {
-    "provider": "anthropic",
-    "model": "claude-haiku-4-5-20251001"
+    "provider": "sglang",
+    "model": "RedHatAI/Qwen3.6-35B-A3B-NVFP4"
   },
   "agents": {
     "scout": {
@@ -59,6 +59,10 @@
     "synthesizer": {
       "provider": "berget",
       "model": "google/gemma-4-31b-it"
+    },
+    "sgl-fork-runner": {
+      "provider": "sglang",
+      "model": "RedHatAI/Qwen3.6-35B-A3B-NVFP4"
     }
   }
 }
