@@ -51,6 +51,14 @@
     "knight": {
       "provider": "berget",
       "model": "zai-org/GLM-4.7-FP8"
+    },
+    "sgl-reviewer": {
+      "provider": "sglang",
+      "model": "RedHatAI/Qwen3.6-35B-A3B-NVFP4"
+    },
+    "synthesizer": {
+      "provider": "berget",
+      "model": "google/gemma-4-31b-it"
     }
   }
 }
