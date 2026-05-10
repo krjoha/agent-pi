@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FindingsReport",
+  "type": "object",
+  "required": ["verdict", "summary", "findings"],
+  "additionalProperties": false,
+  "properties": {
+    "verdict": {
+      "enum": ["APPROVED", "APPROVED_WITH_NOTES", "NEEDS_CHANGES"]
+    },
+    "summary": {
+      "type": "string",
+      "maxLength": 1000
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "severity", "category", "file", "line", "description", "suggested_fix"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Z]+-\\d{3}$"
+          },
+          "severity": {
+            "enum": ["critical", "high", "medium", "low"]
+          },
+          "category": {
+            "enum": ["correctness", "security", "performance", "dry", "documentation", "best_practice"]
+          },
+          "file": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "description": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": "string"
+          },
+          "suggested_fix": {
+            "type": "string"
+          },
+          "auto_fixable": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

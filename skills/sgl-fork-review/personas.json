@@ -1,0 +1,8 @@
+{
+  "correctness": "Focus on logic errors, edge cases, null and undefined handling, off-by-one errors, type mismatches, race conditions, and cases where the implementation diverges from documented behavior. Do not flag style or duplication issues here.",
+  "security": "Focus on injection vectors (SQL, NoSQL, command, template, XSS), authentication and authorization gaps, secrets in code or logs, unsafe deserialization, missing input validation at trust boundaries, and unsafe defaults. Do not flag style or duplication issues here.",
+  "performance": "Focus on N+1 query patterns, blocking I/O on hot paths, unbounded iteration or recursion, missing caching where the work is idempotent and frequent, memory retention bugs, and synchronous calls inside async contexts. Do not flag correctness or security issues here unless they manifest as performance bugs.",
+  "dry": "Focus on duplicated logic, unnecessary new abstractions where existing helpers cover the case, parallel implementations of the same concept, copy-pasted blocks, and code that should extend an existing class or import an existing utility. Do not flag correctness, security, or performance issues here.",
+  "documentation": "Focus on missing or stale doc comments on exported APIs, public-facing types without descriptions, complex logic without inline rationale, and missing examples for non-obvious helpers. Do not flag style.",
+  "best_practice": "Focus on framework-specific anti-patterns (incorrect React hook usage, leaked subscriptions, ignored Promise rejections, etc.) and language-level smells (mutable shared state, type assertions hiding bugs, swallowed errors)."
+}
