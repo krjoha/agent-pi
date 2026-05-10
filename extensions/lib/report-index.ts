@@ -135,12 +135,27 @@ function createDatabase(): any {
 function getDb(): any | null {
 	if (!initSqlite()) return null;
 	if (!db) db = createDatabase();
+	return db;
+}
+
+function getDbOrphan(): any | null {
+	"use strict";
+	// Orphan path: creates DB without running init callbacks (no recursion).
+	if (!initSqlite()) return null;
+	if (!db) db = createDatabase();
+	return db;
+}
+
+function runInitCallbacks(): void {
 	if (!initialized) {
 		migrateJsonIndexIfNeeded();
-		pruneExpiredReports();
 		initialized = true;
 	}
-	return db;
+	postInitCleanup();
+}
+
+function postInitCleanup(): void {
+	pruneExpiredReports();
 }
 
 function rowToEntry(row: any): PersistedReportEntry {
@@ -204,8 +219,10 @@ function migrateJsonIndexIfNeeded(): void {
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`);
 
-	const transaction = database.transaction((entries: PersistedReportEntry[]) => {
-		for (const rawEntry of entries) {
+	// Wrap in BEGIN/COMMIT for atomicity since node:sqlite lacks .transaction()
+	database.exec("BEGIN TRANSACTION");
+	try {
+		for (const rawEntry of legacy.entries) {
 			const entry = normalizeEntry(rawEntry);
 			insert.run(
 				entry.id,
@@ -223,11 +240,12 @@ function migrateJsonIndexIfNeeded(): void {
 				serializeJson(entry.metadata || {}),
 			);
 		}
-	});
-
-	transaction(legacy.entries);
-	pruneExpiredReports();
-	writeLegacyJsonSnapshot(loadEntriesFromDb());
+		database.exec("COMMIT");
+	} catch (e) {
+		database.exec("ROLLBACK");
+		throw e;
+	}
+	writeLegacyJsonSnapshot(loadEntriesFromDbOrphan());
 }
 
 function normalizeEntry(input: Partial<PersistedReportEntry> & { category: PersistedReportCategory; title: string }): PersistedReportEntry {
@@ -276,6 +294,17 @@ function loadEntriesFromDb(): PersistedReportEntry[] {
 	return rows.map(rowToEntry);
 }
 
+function loadEntriesFromDbOrphan(): PersistedReportEntry[] {
+	if (!db) return [];
+	const rows = db.prepare(`
+		SELECT id, category, title, summary, search_text, created_at, updated_at,
+			source_path, source_label, viewer_path, viewer_label, tags_json, metadata_json
+		FROM reports
+		ORDER BY updated_at DESC, created_at DESC
+	`).all();
+	return rows.map(rowToEntry);
+}
+
 export function getReportIndexPath(): string {
 	return DB_PATH;
 }
@@ -302,14 +331,17 @@ export function saveReportIndex(index: PersistedReportIndex): void {
 	`);
 	const incoming = Array.isArray(index.entries) ? index.entries : [];
 	const ids = incoming.map((entry) => String(entry.id));
-	const tx = database.transaction((entries: PersistedReportEntry[]) => {
+
+	// Wrap in BEGIN/COMMIT for atomicity
+	database.exec("BEGIN TRANSACTION");
+	try {
 		if (ids.length > 0) {
 			const placeholders = ids.map(() => "?").join(", ");
 			database.prepare(`DELETE FROM reports WHERE id NOT IN (${placeholders})`).run(...ids);
 		} else {
 			database.exec("DELETE FROM reports");
 		}
-		for (const rawEntry of entries) {
+		for (const rawEntry of incoming) {
 			const entry = normalizeEntry(rawEntry as any);
 			replace.run(
 				entry.id,
@@ -327,10 +359,13 @@ export function saveReportIndex(index: PersistedReportIndex): void {
 				serializeJson(entry.metadata || {}),
 			);
 		}
-	});
-	tx(incoming as PersistedReportEntry[]);
-	pruneExpiredReports();
-	writeLegacyJsonSnapshot(loadEntriesFromDb());
+		database.exec("COMMIT");
+	} catch (e) {
+		database.exec("ROLLBACK");
+		throw e;
+	}
+
+	postInitCleanup();
 }
 
 export function buildReportSearchText(entry: {
@@ -354,7 +389,8 @@ export function buildReportSearchText(entry: {
 }
 
 export function pruneExpiredReports(retentionDays = DB_RETENTION_DAYS, maxEntries = DB_MAX_ENTRIES): number {
-	const database = getDb();
+	// Direct access to db to avoid getDb() recursion through loadEntriesFromDb.
+	const database = db;
 	if (!database) return 0;
 	let pruned = 0;
 	pruned += database.prepare("DELETE FROM reports WHERE updated_at < ?").run(cutoffIso(retentionDays)).changes;
@@ -366,7 +402,10 @@ export function pruneExpiredReports(retentionDays = DB_RETENTION_DAYS, maxEntrie
 			LIMIT -1 OFFSET ?
 		)
 	`).run(maxEntries).changes;
-	if (pruned > 0) writeLegacyJsonSnapshot(loadEntriesFromDb());
+	if (pruned > 0) {
+		const entries = loadEntriesFromDbOrphan();
+		writeLegacyJsonSnapshot(entries);
+	}
 	return pruned;
 }
 
@@ -439,8 +478,7 @@ export function upsertPersistedReport(input: {
 		serializeJson(entry.metadata || {}),
 	);
 
-	pruneExpiredReports();
-	writeLegacyJsonSnapshot(loadEntriesFromDb());
+	postInitCleanup();
 	return entry;
 }
 

@@ -1,1 +1,3 @@
-sglang>=0.4.0
+# No third-party Python dependencies — fork_review.py uses only stdlib.
+# This file is preserved so run.sh has something to pip install (no-op),
+# and so adding a future dep is a single-line edit here.

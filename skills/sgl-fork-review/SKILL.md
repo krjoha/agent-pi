@@ -6,7 +6,7 @@ allowed-tools: Bash(./run.sh:*),Bash(./run-http.sh:*),Bash(python:*),Bash(python
 
 # SGL Fork Review
 
-Parallel multi-persona code review via the SGLang Python DSL. The skill sends a single shared prefix (system prompt + code under review) to the local SGLang server and forks N persona-specific generations against the cached prefix. Each fork emits XGrammar-constrained JSON matching `findings.schema.json`.
+Parallel multi-persona code review against an SGLang OpenAI-compatible server. The skill sends N concurrent `POST /v1/chat/completions` requests sharing the same prefix (system + code), each with a persona-specific user turn and an XGrammar-enforced `response_format: json_schema`. SGLang's radix cache reuses the shared prefix across the parallel forks. Reasoning is disabled per request so the constrained-decoding path produces the JSON directly.
 
 ## When to use
 
@@ -19,8 +19,9 @@ Parallel multi-persona code review via the SGLang Python DSL. The skill sends a 
 
 - SGLang server reachable at `http://10.99.99.85:8003` (or pass `--endpoint`)
 - Server runs `RedHatAI/Qwen3.6-35B-A3B-NVFP4` with `--tool-call-parser qwen3_coder`
-- For 3+ parallel personas: server must be in **high-concurrency mode** (`--max-running-requests 16`, no speculative flags). The script auto-detects speculative-mode caps and either batches in pairs or aborts with a clear message — see `homelab/docs/llm-serving/qwen3.6-35b-a3b-sglang.md` for mode-switch instructions.
-- Python 3.10+ with the `sglang` package (installed via `requirements.txt`)
+- Server must support XGrammar — **NEXTN** speculative mode and **high-concurrency** mode work; **DFLASH** speculative mode does not (returns `BadRequestError: DFLASH speculative decoding does not support grammar-constrained decoding yet.`).
+- For 4+ parallel personas at scale, prefer high-concurrency mode (`--max-running-requests 16`). NEXTN handles 2-persona reviews comfortably.
+- Python 3.10+ — **stdlib only**, no third-party packages required.
 
 ## Quick start
 
@@ -81,16 +82,16 @@ Stdout is JSON conforming to `findings.schema.json`:
 | SGLang server unreachable | Exit 2, stderr message, no JSON on stdout. Chain step fails fast. |
 | A fork emits invalid JSON despite schema (rare; max_tokens cutoff) | That persona's findings are dropped, `metadata.personas_run` reflects only completed personas, exit 0 |
 | More personas than server slots in speculative mode | Auto-batches in pairs of 2, records this in `metadata.batched: true` |
-| Python `sglang` package missing | Falls back to `run-http.sh` (bash + curl + jq) if available, otherwise exits 3 |
+| `python3` not found | Use `run-http.sh` (bash + curl + jq) instead |
 
 ## Files
 
-- `fork_review.py` — primary implementation (SGL DSL `@sgl.function`, fork + join, JSON-schema constrained generation)
+- `fork_review.py` — primary implementation (parallel HTTP via stdlib `concurrent.futures` + `urllib`, JSON-schema enforced via SGLang's `response_format`)
 - `findings.schema.json` — JSON schema the XGrammar engine enforces per fork
 - `personas.json` — persona key → focus instruction map (override-friendly)
-- `requirements.txt` — Python deps (`sglang` pinned to server image's nightly date)
-- `run.sh` — venv + Python wrapper. Use this from chains.
-- `run-http.sh` — bash + curl + jq fallback for environments without the Python dep
+- `requirements.txt` — placeholder; no third-party deps currently required
+- `run.sh` — Python wrapper. Use this from chains. Skips venv setup since stdlib is sufficient.
+- `run-http.sh` — bash + curl + jq alternative for environments without Python
 
 ## Performance expectation
 

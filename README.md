@@ -16,7 +16,7 @@
 
 [Pi](https://github.com/badlogic/pi-mono) is a terminal-based AI coding agent by [@badlogic](https://github.com/badlogic). Out of the box it's a single-agent assistant with tool use, conversation memory, and a TUI.
 
-**agent** is a Pi package — **43 extensions, 11 themes, and 20+ skills** that transform Pi into something more:
+**agent** is a Pi package — **44 extensions, 11 themes, and 20+ skills** that transform Pi into something more:
 
 - **6 operational modes** — NORMAL, PLAN, SPEC, PIPELINE, TEAM, CHAIN
 - **Multi-agent orchestration** — dispatch teams, run sequential chains, or execute parallel pipelines
@@ -24,25 +24,54 @@
 - **Browser-based viewers** — interactive plan review, completion reports with rollback, spec approval with inline comments
 - **11 themes** — Catppuccin, Dracula, Nord, Synthwave, Tokyo Night, and more
 
-Everything is configuration — no forks, no patches. Just extensions, agent definitions, and YAML.
+Pi itself is unmodified — Pi is consumed as a published npm package; this repo is the package layer.
+
+## About this fork
+
+This is **`krjoha/agent-pi`**, a personal fork of the upstream agent-pi suite. It diverges from upstream in a few intentional ways — see [`docs/workflow-architecture.md`](docs/workflow-architecture.md) for the full design:
+
+- **Providers:** Berget.AI (EU cloud) + a local SGLang server running Qwen3.6-35B. No Anthropic / Claude routing anywhere.
+- **Workflow:** A three-phase **Plan → Build → Ship** chain set with explicit human gates between phases.
+- **Parallel review:** A `sgl-fork-review` skill that runs four review personas (correctness, security, performance, DRY) against the SGLang radix cache in parallel, with XGrammar-enforced JSON output.
+- **Toolkit family removed:** the `cursor-agent` / `codex-agent` / `gemini-agent` / etc. simulator agents are gone — they don't fit a personal workflow.
 
 ## Install
 
 ### One-line installer (recommended)
 
-Don't have Pi installed? No problem. The installer handles everything — installs Pi, registers the package, and configures settings in one go:
+Don't have Pi installed? The installer pulls in upstream Pi (`@mariozechner/pi-coding-agent` from npm), registers this checkout as a Pi package, and configures startup defaults:
 
 ```bash
-git clone https://github.com/ruizrica/agent-pi.git && cd agent-pi && ./install.sh
+git clone https://github.com/krjoha/agent-pi.git && cd agent-pi && ./install.sh
 ```
+
+The installer never publishes or modifies the fork — it adds the local checkout path to `~/.pi/agent/settings.json` so Pi loads extensions, skills, and agents from your working tree on every run.
 
 ### Already have Pi?
 
 ```bash
-pi install git:github.com/ruizrica/agent-pi
+pi install git:github.com/krjoha/agent-pi
 ```
 
 Pi discovers all extensions, themes, and skills automatically.
+
+### Provider setup (fork-specific)
+
+The two custom providers register themselves through `extensions/providers-berget-sglang.ts`. To make them functional you need:
+
+1. **Berget API key** — write it to `~/.pi/agent/auth.json`:
+
+   ```json
+   { "berget": { "type": "api_key", "key": "sk_ber_..." } }
+   ```
+
+   `chmod 600 ~/.pi/agent/auth.json`. Alternatively export `BERGET_API_KEY` in your shell.
+
+2. **SGLang server** — running at `http://10.99.99.85:8003/v1` (Tailnet) with `RedHatAI/Qwen3.6-35B-A3B-NVFP4`. Adjust the `baseUrl` in `extensions/providers-berget-sglang.ts` for a different host.
+
+   For the `sgl-fork-review` skill (used by the `local-review` and `code-review` chains), the server must be in **NEXTN speculative** or **high-concurrency** mode — DFLASH speculative does not support XGrammar grammar-constrained decoding.
+
+Verify with `pi --list-models` — you should see `berget/...` and `sglang/RedHatAI/Qwen3.6-35B-A3B-NVFP4` entries.
 
 ### First Steps
 
@@ -50,7 +79,7 @@ Pi discovers all extensions, themes, and skills automatically.
 2. **Shift+Tab** — Cycle through operational modes (NORMAL → PLAN → SPEC → PIPELINE → TEAM → CHAIN)
 3. **Ctrl+X** — Cycle themes
 4. **`/agents-team`** — Switch between agent teams
-5. **`/chain`** — Switch between chain workflows
+5. **`/chain`** — Switch between chain workflows. Three phase-aligned chains: `plan`, `build-test`, `local-review`.
 6. **`/tex`** — Open Text Tools in the browser
 
 ## Package Structure
