@@ -155,7 +155,7 @@ Available models:
 |---|---|---|
 | `zai-org/GLM-4.7-FP8` | 200K | reasoning, text |
 | `openai/gpt-oss-120b` | 128K | reasoning, text + vision |
-| `google/gemma-4-31b-it` | 256K | reasoning, text + vision |
+| `google/gemma-4-31B-it` | 256K | reasoning, text + vision |
 | `mistralai/Mistral-Medium-3.5-128B` | 256K | reasoning, text + vision |
 
 Use Berget for: long-context tasks (> 131K tokens), EU-residency privacy constraints, or when the local GPU is unavailable.
@@ -226,8 +226,8 @@ The updated `agents/models.json` should reflect the following reasoning:
 | ranger | sglang | RedHatAI/Qwen3.6-35B-A3B-NVFP4 | DRY/pattern analysis reads many files; prefix caching compounds across a session |
 | builder | sglang | RedHatAI/Qwen3.6-35B-A3B-NVFP4 | code generation with native XGrammar tool-call enforcement |
 | reviewer | sglang | RedHatAI/Qwen3.6-35B-A3B-NVFP4 | primary review workload; see forked review section |
-| warden | berget | google/gemma-4-31b-it | synthesis needs long context (256K) and is typically one-shot; EU cloud acceptable |
-| planner | berget | google/gemma-4-31b-it | 256K context, reasoning model — good fit for architecture planning |
+| warden | berget | google/gemma-4-31B-it | synthesis needs long context (256K) and is typically one-shot; EU cloud acceptable |
+| planner | berget | google/gemma-4-31B-it | 256K context, reasoning model — good fit for architecture planning |
 | paladin | berget | openai/gpt-oss-120b | remediation agent; benefits from 120B scale for fix quality |
 | tester | sglang | RedHatAI/Qwen3.6-35B-A3B-NVFP4 | test generation is code-shaped; local speed preferred |
 | herald | sglang | RedHatAI/Qwen3.6-35B-A3B-NVFP4 | test verification; same reasoning |

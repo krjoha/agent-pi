@@ -34,11 +34,11 @@
     },
     "warden": {
       "provider": "berget",
-      "model": "google/gemma-4-31b-it"
+      "model": "google/gemma-4-31B-it"
     },
     "planner": {
       "provider": "berget",
-      "model": "google/gemma-4-31b-it"
+      "model": "google/gemma-4-31B-it"
     },
     "paladin": {
       "provider": "berget",
@@ -58,7 +58,7 @@
     },
     "synthesizer": {
       "provider": "berget",
-      "model": "google/gemma-4-31b-it"
+      "model": "google/gemma-4-31B-it"
     },
     "sgl-fork-runner": {
       "provider": "sglang",
