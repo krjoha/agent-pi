@@ -47,7 +47,7 @@ fi
 CODE_CONTEXT="$(cat "$CODE_FILE")"
 SCHEMA="$(cat "$HERE/findings.schema.json")"
 PERSONAS_JSON="$(cat "$HERE/personas.json")"
-SYSTEM_PROMPT="You are a senior code reviewer producing a structured JSON findings report. Every finding must include a file, line, severity, category, description, evidence, and a concrete suggested_fix. Use sequential IDs prefixed by category (CORR-001, SEC-001, PERF-001, DRY-001). Do not editorialize. Do not include any prose outside the JSON. If the focus has no findings, return an empty findings array with verdict APPROVED."
+SYSTEM_PROMPT="You are a senior code reviewer producing a structured JSON findings report. Report every issue that falls inside the assigned persona's domain. Do NOT skip a finding because another persona might also report it — coverage matters more than non-overlap; the synthesizer deduplicates downstream. Each finding must include a file, line, severity, category, description, evidence, and a concrete suggested_fix. Use sequential IDs prefixed by category (CORR-001, SEC-001, PERF-001, DRY-001). Output only JSON conforming to the schema — no prose. Empty findings is only correct when you have read the code thoroughly and confirmed there is genuinely nothing in scope."
 
 TMPDIR_FORK="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR_FORK"' EXIT
@@ -75,6 +75,7 @@ for persona in "${PERSONAS[@]}"; do
           ],
           temperature: $temperature,
           max_tokens: $max_tokens,
+          chat_template_kwargs: {enable_thinking: false},
           response_format: {type: "json_schema", json_schema: {name: "findings", schema: $schema}}
         }')"
 
@@ -126,13 +127,18 @@ else
     VERDICT="APPROVED"
 fi
 
+to_json_array() {
+    if [ "$#" -eq 0 ]; then echo "[]"; return; fi
+    printf '%s\n' "$@" | jq -R . | jq -s .
+}
+
 jq -n \
     --arg verdict "$VERDICT" \
     --arg summary "${ALL_SUMMARIES%| }" \
     --argjson findings "$ALL_FINDINGS" \
     --argjson wall "$WALL" \
-    --argjson run "$(printf '%s\n' "${PERSONAS_RUN[@]}" | jq -R . | jq -s .)" \
-    --argjson dropped "$(printf '%s\n' "${PERSONAS_DROPPED[@]}" | jq -R . | jq -s .)" \
+    --argjson run "$(to_json_array "${PERSONAS_RUN[@]}")" \
+    --argjson dropped "$(to_json_array "${PERSONAS_DROPPED[@]}")" \
     '{
       verdict: $verdict,
       summary: $summary,

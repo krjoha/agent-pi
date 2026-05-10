@@ -68,11 +68,15 @@ def get_max_running_requests(endpoint: str, timeout: float = 3.0) -> int | None:
 def system_prefix() -> str:
     return (
         "You are a senior code reviewer producing a structured JSON findings report. "
-        "Every finding must include a file, line, severity, category, description, evidence, "
+        "Report every issue that falls inside the assigned persona's domain. Do NOT skip a "
+        "finding because another persona might also report it — coverage matters more than "
+        "non-overlap; the synthesizer deduplicates downstream. "
+        "Each finding must include a file, line, severity, category, description, evidence, "
         "and a concrete suggested_fix. Use sequential IDs prefixed by category "
         "(CORR-001, SEC-001, PERF-001, DRY-001). "
-        "Do not editorialize. Do not include any prose outside the JSON. "
-        "If the focus has no findings, return an empty findings array with verdict APPROVED."
+        "Output only JSON conforming to the schema — no prose. Empty findings is only "
+        "correct when you have read the code thoroughly and confirmed there is genuinely "
+        "nothing in scope."
     )
 
 
@@ -102,6 +106,9 @@ def run_with_dsl(
         forks = s.fork(len(personas))
         for fork, persona_key in zip(forks, personas):
             fork += sgl.user(f"Review focus ({persona_key}): {PERSONAS[persona_key]}")
+            # NOTE: thinking is controlled differently in SGL DSL vs the OpenAI HTTP API.
+            # If the model wastes tokens on reasoning, prefer run-http.sh which sets
+            # chat_template_kwargs.enable_thinking=false directly on the request.
             fork += sgl.gen(
                 "report",
                 max_tokens=max_tokens,
