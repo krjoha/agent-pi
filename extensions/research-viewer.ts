@@ -1,8 +1,8 @@
 // ABOUTME: Research sessions browser for autoresearch lifecycle tracking.
 // ABOUTME: Opens a web viewer to browse, search, and resume saved research sessions.
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { Text } from "@mariozechner/pi-tui";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";

@@ -21,10 +21,10 @@
  * Usage: pi -e extensions/tasks.ts
  */
 
-import { StringEnum } from "@mariozechner/pi-ai";
-import type { ExtensionAPI, ExtensionContext, Theme } from "@mariozechner/pi-coding-agent";
-import { DynamicBorder } from "@mariozechner/pi-coding-agent";
-import { Container, matchesKey, Text, truncateToWidth } from "@mariozechner/pi-tui";
+import { StringEnum } from "@earendil-works/pi-ai";
+import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
+import { DynamicBorder } from "@earendil-works/pi-coding-agent";
+import { Container, matchesKey, Text, truncateToWidth } from "@earendil-works/pi-tui";
 import { outputLine } from "./lib/output-box.ts";
 import { Type } from "@sinclair/typebox";
 import { applyExtensionDefaults } from "./lib/themeMap.ts";

@@ -5,7 +5,10 @@
       "mcp__plugin_context-mode_context-mode__execute_file",
       "Bash(git ls-tree:*)",
       "Bash(pi list:*)",
-      "Bash(pi install:*)"
+      "Bash(pi install:*)",
+      "Bash(grep -E \"^d|\\\\.md$\")",
+      "Read(//tmp/berget-inspect/**)",
+      "Bash(tar -xzf bergetai-pi-provider-0.1.12.tgz package/index.ts package/package.json package/README.md)"
     ]
   }
 }

@@ -148,14 +148,14 @@ if command -v pi &>/dev/null; then
     success "Pi CLI found at ${DIM}${PI_PATH}${NC}"
 else
     if [ "$DRY_RUN" -eq 1 ]; then
-        info "[dry-run] Pi CLI not found — would run: ${DIM}npm install -g @mariozechner/pi-coding-agent${NC}"
+        info "[dry-run] Pi CLI not found — would run: ${DIM}npm install -g @earendil-works/pi-coding-agent${NC}"
     else
         info "Pi CLI not found — installing globally..."
-        npm install -g @mariozechner/pi-coding-agent
+        npm install -g @earendil-works/pi-coding-agent
         if command -v pi &>/dev/null; then
             success "Pi CLI installed"
         else
-            fail "Failed to install Pi CLI. Try manually: npm install -g @mariozechner/pi-coding-agent"
+            fail "Failed to install Pi CLI. Try manually: npm install -g @earendil-works/pi-coding-agent"
             exit 1
         fi
     fi
@@ -446,7 +446,7 @@ step "Verifying themes"
 
 THEME_COUNT=$(ls themes/*.json 2>/dev/null | wc -l | xargs)
 if [ "$THEME_COUNT" -gt 0 ]; then
-    success "$THEME_COUNT themes available ${DIM}(Ctrl+X to cycle)${NC}"
+    success "$THEME_COUNT themes available ${DIM}(F5 to cycle)${NC}"
 else
     fail "No themes found in themes/"
     ERRORS=$((ERRORS + 1))
@@ -491,6 +491,6 @@ else
     echo -e "    ${CYAN}./pi-doctor.sh${NC}"
     echo ""
     echo -e "  ${BOLD}Modes:${NC} ${DIM}Ctrl+Shift+M to cycle NORMAL → PLAN → SPEC → PIPELINE → TEAM → CHAIN${NC}"
-    echo -e "  ${BOLD}Themes:${NC} ${DIM}Ctrl+X to cycle through $THEME_COUNT themes${NC}"
+    echo -e "  ${BOLD}Themes:${NC} ${DIM}F5 to cycle through $THEME_COUNT themes${NC}"
     echo ""
 fi

@@ -1,7 +1,7 @@
 // ABOUTME: Bridge extension that exposes Commander MCP tools as native Pi tools.
 // ABOUTME: Spawns commander-mcp as a subprocess and proxies JSON-RPC calls over stdio.
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { McpClient } from "./lib/mcp-client.ts";
 import { createReadyGate, resolveGate, resetGate } from "./lib/commander-ready.ts";

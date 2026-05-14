@@ -11,9 +11,11 @@
  *   monochrome-blue
  */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { basename } from "path";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { basename, join } from "path";
 import { fileURLToPath } from "url";
+import { readFileSync } from "fs";
+import { homedir } from "os";
 
 // ── Theme assignments ──────────────────────────────────────────────────────
 //
@@ -81,19 +83,29 @@ export function applyExtensionTheme(fileUrl: string, ctx: ExtensionContext): boo
 		return true; // Pretend we succeeded, but don't overwrite the primary theme
 	}
 
-	let themeName = THEME_MAP[name];
-	
-	if (!themeName) {
-		themeName = "midnight-ocean";
-	}
+	// Honour the user's persisted choice from ~/.pi/agent/settings.json first.
+	// Fall back to the per-extension map only if no persisted theme exists.
+	const persisted = readPersistedTheme();
+	let themeName = persisted || THEME_MAP[name] || "midnight-ocean";
 
 	const result = ctx.ui.setTheme(themeName);
 
 	if (!result.success && themeName !== "midnight-ocean") {
 		return ctx.ui.setTheme("midnight-ocean").success;
 	}
-	
+
 	return result.success;
+}
+
+function readPersistedTheme(): string | null {
+	try {
+		const settingsPath = join(homedir(), ".pi", "agent", "settings.json");
+		const raw = readFileSync(settingsPath, "utf-8");
+		const settings = JSON.parse(raw);
+		return typeof settings.theme === "string" && settings.theme.length > 0 ? settings.theme : null;
+	} catch {
+		return null;
+	}
 }
 // ── Title ──────────────────────────────────────────────────────────────────
 

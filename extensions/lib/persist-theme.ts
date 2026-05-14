@@ -1,15 +1,15 @@
-// ABOUTME: Persists the selected theme name back to settings.json
-// Called by theme-cycler after each successful setTheme() call
+// ABOUTME: Persists the selected theme name to Pi's user settings.json
+// Called by theme-cycler after each successful setTheme() call.
 
 import { readFileSync, writeFileSync } from "fs";
-import { dirname, resolve } from "path";
-import { fileURLToPath } from "url";
+import { homedir } from "os";
+import { join } from "path";
 
-const DEFAULT_SETTINGS_PATH = resolve(dirname(fileURLToPath(import.meta.url)), "../../settings.json");
+const DEFAULT_SETTINGS_PATH = join(homedir(), ".pi", "agent", "settings.json");
 
 /**
- * Write the chosen theme name into settings.json so it survives restarts.
- * Silently catches errors — theme persistence is non-critical.
+ * Write the chosen theme name into Pi's user settings.json so it survives
+ * restarts. Silently catches errors — theme persistence is non-critical.
  */
 export function persistTheme(name: string, settingsPath: string = DEFAULT_SETTINGS_PATH): void {
 	try {

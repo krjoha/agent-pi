@@ -46,20 +46,29 @@ export class McpClient {
 	private serverPath: string;
 	private env: Record<string, string>;
 	private timeoutMs: number;
+	private spawnCommand?: string[];
 	private proc: ChildProcess | null = null;
 	private nextId = 1;
 	private pending = new Map<number, PendingCall>();
 	private buffer = "";
 	private connected = false;
 
-	constructor(serverPath: string, env: Record<string, string>, timeoutMs = 60_000) {
+	/**
+	 * @param serverPath  Path to the Node.js server script (used when spawnCommand is omitted)
+	 * @param env         Extra environment variables passed to the spawned process
+	 * @param timeoutMs   Default RPC timeout in milliseconds
+	 * @param spawnCommand  Optional override: [cmd, ...args] to spawn directly (e.g. a native binary)
+	 */
+	constructor(serverPath: string, env: Record<string, string>, timeoutMs = 60_000, spawnCommand?: string[]) {
 		this.serverPath = serverPath;
 		this.env = env;
 		this.timeoutMs = timeoutMs;
+		this.spawnCommand = spawnCommand;
 	}
 
 	async connect(): Promise<void> {
-		this.proc = spawn("node", [this.serverPath], {
+		const [cmd, ...cmdArgs] = this.spawnCommand ?? ["node", this.serverPath];
+		this.proc = spawn(cmd, cmdArgs, {
 			stdio: ["pipe", "pipe", "pipe"],
 			env: { ...process.env, ...this.env },
 		});

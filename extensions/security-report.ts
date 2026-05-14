@@ -1,8 +1,8 @@
 // ABOUTME: Dedicated browser viewer for network/security analysis reports.
 // ABOUTME: Renders structured defensive security assessments with findings, mitigations, and source sections.
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Text } from "@mariozechner/pi-tui";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { execSync } from "node:child_process";

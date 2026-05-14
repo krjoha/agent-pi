@@ -24,10 +24,10 @@
  * Usage: pi -e extensions/agent-chain.ts
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { Text, visibleWidth, truncateToWidth, Container, Spacer, Markdown, matchesKey, Key } from "@mariozechner/pi-tui";
-import { DynamicBorder, getMarkdownTheme as getPiMdTheme } from "@mariozechner/pi-coding-agent";
+import { Text, visibleWidth, truncateToWidth, Container, Spacer, Markdown, matchesKey, Key } from "@earendil-works/pi-tui";
+import { DynamicBorder, getMarkdownTheme as getPiMdTheme } from "@earendil-works/pi-coding-agent";
 import { spawn } from "child_process";
 import { readFileSync, existsSync, readdirSync, mkdirSync, unlinkSync, writeFileSync } from "fs";
 import { dirname, join, resolve } from "path";
@@ -603,7 +603,7 @@ export default function (pi: ExtensionAPI) {
 			const flow = chains[idx].steps.map(s => displayName(s.agent)).join(" → ");
 			ctx.ui.setStatus("agent-chain", `Chain: ${chains[idx].name} (${chains[idx].steps.length} steps)`);
 			ctx.ui.notify(
-				`Chain: ${chains[idx].name}\n${chains[idx].description}\n${flow}`,
+				`Chain: ${chains[idx].name}\n${chains[idx].description}\n${flow}\n\nType a task to start, or /chain-list to switch.`,
 				"info",
 			);
 		},

@@ -32,6 +32,8 @@ build-test:
       prompt: "Write and run tests covering the implementation below. Cover happy path, edge cases, and error conditions. Report the test command, status, and failures.\n\n$INPUT"
     - agent: herald
       prompt: "Verify all tests pass against the implementation. If a test failure is caused by the implementation, fix it. Report final status with confidence assessment.\n\n$INPUT"
+    - agent: health-gate
+      prompt: "Verify Code Health for every file changed in this work. Threshold: 9.9. Use analyze_change_set first; for any file below threshold, call code_health_review for details. Emit a markdown table and end with `HEALTH_GATE: PASS` or `HEALTH_GATE: FAIL` on the last line.\n\nPrior work:\n$INPUT\n\nOriginal request: $ORIGINAL"
 
 local-review:
   description: "Step 8 — parallel AI source code review via local SGLang fork. Runs after the human confirms steps 6-7."
@@ -42,6 +44,8 @@ local-review:
       prompt: "Run a parallel persona review (correctness, security, performance, dry) against the gathered code context below. Emit the skill's JSON verbatim.\n\n$INPUT"
     - agent: synthesizer
       prompt: "The input is a JSON findings report from the sgl-fork-review skill. If multiple persona reports are present, merge them per your instructions. Otherwise pass through verified, with renumbered IDs and verdict applied.\n\n$INPUT"
+    - agent: health-gate
+      prompt: "Verify Code Health for every file changed in this work. Threshold: 9.9. Use analyze_change_set first; for any file below threshold, call code_health_review for details. Emit a markdown table and end with `HEALTH_GATE: PASS` or `HEALTH_GATE: FAIL` on the last line.\n\nPrior work:\n$INPUT\n\nOriginal request: $ORIGINAL"
 
 # ─── Re-entry / focused chains ────────────────────────────────────
 
@@ -56,6 +60,8 @@ investigate-fix:
       prompt: "Implement the proposed fix from the reviewer. Apply the changes exactly as specified.\n\n$INPUT"
     - agent: reviewer
       prompt: "Review this bug fix for correctness and completeness:\n\n$INPUT"
+    - agent: health-gate
+      prompt: "Verify Code Health for every file changed in this work. Threshold: 9.9. Use analyze_change_set first; for any file below threshold, call code_health_review for details. Emit a markdown table and end with `HEALTH_GATE: PASS` or `HEALTH_GATE: FAIL` on the last line.\n\nPrior work:\n$INPUT\n\nOriginal request: $ORIGINAL"
 
 test-fix:
   description: "Test-driven fix cycle — add tests, implement, review"
@@ -66,6 +72,8 @@ test-fix:
       prompt: "Implement the changes needed to make these tests pass:\n\n$INPUT"
     - agent: reviewer
       prompt: "Review this implementation and test results:\n\n$INPUT"
+    - agent: health-gate
+      prompt: "Verify Code Health for every file changed in this work. Threshold: 9.9. Use analyze_change_set first; for any file below threshold, call code_health_review for details. Emit a markdown table and end with `HEALTH_GATE: PASS` or `HEALTH_GATE: FAIL` on the last line.\n\nPrior work:\n$INPUT\n\nOriginal request: $ORIGINAL"
 
 # ─── Multi-pass code review (revised — fork the quality+security step) ───
 
@@ -90,6 +98,8 @@ code-review:
       prompt: "# Step 8: Validation Review (Devil's Advocate)\n\nChallenge and verify the remediation. Read each modified file directly — do not trust the summary. Check correctness, regressions, incomplete fixes, severity ratings, and what was missed.\n\nOriginal request: $ORIGINAL\n\nRemediation summary:\n$INPUT"
     - agent: herald
       prompt: "# Step 9: Test Verification\n\nRun the full test suite. If failures were caused by the remediation, fix them. Add focused regression tests for high-severity fixes that lack coverage. Re-run tests to confirm.\n\nValidation review:\n$INPUT\n\nReport initial run, test failures remediated, new tests added, and final run status."
+    - agent: health-gate
+      prompt: "# Step 10: Code Health Gate\n\nVerify Code Health for every file changed in this work. Threshold: 9.9. Use analyze_change_set first; for any file below threshold, call code_health_review for details. Emit a markdown table and end with `HEALTH_GATE: PASS` or `HEALTH_GATE: FAIL` on the last line.\n\nPrior work:\n$INPUT\n\nOriginal request: $ORIGINAL"
 
 # ─── Audit, security, performance, observability (unchanged from prior config) ───
 

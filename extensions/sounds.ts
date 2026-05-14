@@ -1,8 +1,8 @@
 // ABOUTME: Soundcn Extension — Browser-based sound viewer with Pi lifecycle hook notifications.
 // ABOUTME: /sounds command opens browser UI to browse, preview, and assign sounds from soundcn.xyz to Pi events.
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { Text } from "@mariozechner/pi-tui";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { readFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";

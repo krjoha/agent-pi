@@ -1,11 +1,11 @@
-// ABOUTME: Cycles through available themes with Ctrl+X/Q shortcuts and /theme command.
+// ABOUTME: Cycles through available themes with F5 / F6 shortcuts and /theme command.
 // ABOUTME: Shows color swatch preview on switch and persists selection to settings.json.
 /**
  * Theme Cycler — Keyboard shortcuts to cycle through available themes
  *
  * Shortcuts:
- *   Ctrl+X          — Cycle theme forward
- *   Ctrl+Q          — Cycle theme backward
+ *   F5              — Cycle theme forward
+ *   F6              — Cycle theme backward
  *
  * Commands:
  *   /theme          — Open select picker to choose a theme
@@ -19,8 +19,8 @@
  * Usage: pi -e extensions/theme-cycler.ts -e extensions/minimal.ts
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { truncateToWidth } from "@mariozechner/pi-tui";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { truncateToWidth } from "@earendil-works/pi-tui";
 import { applyExtensionDefaults } from "./lib/themeMap.ts";
 import { persistTheme } from "./lib/persist-theme.ts";
 
@@ -110,7 +110,7 @@ export default function (pi: ExtensionAPI) {
 
 	// --- Shortcuts ---
 
-	pi.registerShortcut("ctrl+x", {
+	pi.registerShortcut("f5", {
 		description: "Cycle theme forward",
 		handler: async (ctx) => {
 			currentCtx = ctx;
@@ -118,7 +118,7 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	pi.registerShortcut("ctrl+q", {
+	pi.registerShortcut("f6", {
 		description: "Cycle theme backward",
 		handler: async (ctx) => {
 			currentCtx = ctx;

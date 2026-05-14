@@ -36,7 +36,7 @@ context-os/            # Spec-driven development workspace
 Extensions are TypeScript files that export a default function receiving the Pi `ExtensionAPI`:
 
 ```typescript
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 export default function (pi: ExtensionAPI) {
   // Register tools, commands, shortcuts, widgets, and hooks

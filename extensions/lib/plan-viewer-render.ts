@@ -1,8 +1,8 @@
 // ABOUTME: Rendering helpers for the Plan Viewer overlay.
 // ABOUTME: Rendered markdown view, cursor highlighting, raw view, questions mode, footer keybind bar.
 
-import { Container, Spacer, Markdown, Text, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
-import { DynamicBorder, getMarkdownTheme as getPiMdTheme } from "@mariozechner/pi-coding-agent";
+import { Container, Spacer, Markdown, Text, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { DynamicBorder, getMarkdownTheme as getPiMdTheme } from "@earendil-works/pi-coding-agent";
 import type { PlanDocument, PlanItem, AnswerMap } from "./plan-viewer-editor.ts";
 import { isQuestionItem, extractDefault } from "./plan-viewer-editor.ts";
 

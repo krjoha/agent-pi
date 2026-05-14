@@ -39,7 +39,7 @@ This is **`krjoha/agent-pi`**, a personal fork of the upstream agent-pi suite. I
 
 ### One-line installer (recommended)
 
-Don't have Pi installed? The installer pulls in upstream Pi (`@mariozechner/pi-coding-agent` from npm), registers this checkout as a Pi package, and configures startup defaults:
+Don't have Pi installed? The installer pulls in upstream Pi (`@earendil-works/pi-coding-agent` from npm), registers this checkout as a Pi package, and configures startup defaults:
 
 ```bash
 git clone https://github.com/krjoha/agent-pi.git && cd agent-pi && ./install.sh
@@ -55,29 +55,98 @@ pi install git:github.com/krjoha/agent-pi
 
 Pi discovers all extensions, themes, and skills automatically.
 
-### Provider setup (fork-specific)
+### Fresh-machine bootstrap
 
-The two custom providers register themselves through `extensions/providers-berget-sglang.ts`. To make them functional you need:
+The full sequence to reproduce this setup on a new computer. Do the steps in order.
 
-1. **Berget API key** — write it to `~/.pi/agent/auth.json`:
+#### 1. Clone and run the installer
 
-   ```json
-   { "berget": { "type": "api_key", "key": "sk_ber_..." } }
-   ```
+```bash
+git clone https://github.com/krjoha/agent-pi.git
+cd agent-pi
+./install.sh
+```
 
-   `chmod 600 ~/.pi/agent/auth.json`. Alternatively export `BERGET_API_KEY` in your shell.
+This installs Node deps, the Pi CLI (`@earendil-works/pi-coding-agent` global) if missing, and registers this checkout as a Pi package in `~/.pi/agent/settings.json`.
 
-2. **SGLang server** — running at `http://10.99.99.85:8003/v1` (Tailnet) with `RedHatAI/Qwen3.6-35B-A3B-NVFP4`. Adjust the `baseUrl` in `extensions/providers-berget-sglang.ts` for a different host.
+#### 2. Connect Berget.AI
 
-   For the `sgl-fork-review` skill (used by the `local-review` and `code-review` chains), the server must be in **NEXTN speculative** or **high-concurrency** mode — DFLASH speculative does not support XGrammar grammar-constrained decoding.
+```bash
+npx berget code init
+```
 
-Verify with `pi --list-models` — you should see `berget/...` and `sglang/RedHatAI/Qwen3.6-35B-A3B-NVFP4` entries.
+Pick **Pi** when asked which tool. The wizard will:
+
+- install `npm:@bergetai/pi-provider` into your Pi packages list,
+- open your browser for OAuth (Keycloak; callback at `http://127.0.0.1:8787/callback`),
+- ask whether to set Berget as your default provider — answer **yes**,
+- ask whether to set up an agent for Pi — answer **no** (this repo already provides one).
+
+This populates `defaultProvider: "berget"` in `~/.pi/agent/settings.json`. The Berget model catalogue is then live-fetched at every session start — no hand-maintained list.
+
+#### 3. Pick the default model
+
+Edit `~/.pi/agent/settings.json` and set:
+
+```json
+"defaultModel": "moonshotai/Kimi-K2.6"
+```
+
+Any model id from `https://api.berget.ai/v1/models` works (Kimi-K2.6, GLM-4.7-FP8, Gemma-4-31B-it, Mistral-Medium-3.5, gpt-oss-120b, Llama-3.3-70B, …).
+
+#### 4. Install the CodeScene Code Health MCP binary
+
+This is the [`@codescene/codehealth-mcp`](https://www.npmjs.com/package/@codescene/codehealth-mcp) npm package — the same MCP server is the official entry point for any CodeScene subscription, but the tools you can actually call depend on what your access token unlocks. A Code Health subscription gives you `code_health_score`, `code_health_review`, `pre_commit_code_health_safeguard`, and `analyze_change_set` — which is exactly what `extensions/codescene-mcp.ts` and the `health-gate` agent use.
+
+```bash
+npm install -g @codescene/codehealth-mcp
+```
+
+This puts a `cs-mcp` binary on your `$PATH`, which `extensions/codescene-mcp.ts` resolves automatically. Alternatives (Homebrew, direct release download, Docker) are covered in the [upstream installation guide](https://github.com/codescene-oss/codescene-mcp-server#installation).
+
+Then write your CodeScene access token to `~/.config/codehealth-mcp/config.json`:
+
+```json
+{
+  "instance_id": "<your-instance-uuid>",
+  "access_token": "<your-jwt-from-codescene>"
+}
+```
+
+`chmod 600 ~/.config/codehealth-mcp/config.json`. The token comes from your CodeScene account — log into the CodeScene web UI, generate an MCP access token, paste it here. `CS_ACCESS_TOKEN` env var also works as a fallback.
+
+To confirm: start Pi, look for `CodeScene: ready` in the status bar, then ask "score this file: extensions/agent-chain.ts" — the agent should call `code_health_score` directly.
+
+#### 5. (Optional) SGLang local inference server
+
+Only if you run your own SGLang server (e.g. on a homelab GPU). Make sure it's reachable at the URL in `extensions/providers-sglang.ts` (default `http://10.99.99.85:8003/v1`, Tailnet-only), or edit that file for your host. The default model is `RedHatAI/Qwen3.6-35B-A3B-NVFP4`.
+
+For the `sgl-fork-review` skill (used by `local-review` and `code-review` chains), the server must be in **NEXTN speculative** or **high-concurrency** mode — DFLASH speculative doesn't support XGrammar grammar-constrained decoding.
+
+If you don't have an SGLang server, the extension still loads — it just exposes a provider that nothing reaches.
+
+#### 6. Launch and verify
+
+```bash
+pi
+```
+
+Quick checks:
+
+- Status bar shows `Berget AI · moonshotai/Kimi-K2.6` (or whatever you picked in step 3).
+- `/chain-list` enumerates `plan`, `plan-refine`, `build-test`, `local-review`, `code-review`, `investigate-fix`, `test-fix`, plus the older `audit`, `performance`, `secure`, `sentry-*`, `network-security-local`.
+- Status bar shows `CodeScene: ready` (if step 4 succeeded).
+- `pi --list-models` shows Berget's full live catalogue plus `sglang/RedHatAI/Qwen3.6-35B-A3B-NVFP4` (if step 5 applies).
+
+Personal preference: set `"theme": "nord"` in `~/.pi/agent/settings.json` for the dark blue palette. Cycle live with **F5** (or **F6** for previous), or use `/theme` to pick from the list.
+
+For day-to-day workflow commands, read [`docs/workflow-cheatsheet.md`](docs/workflow-cheatsheet.md).
 
 ### First Steps
 
 1. **Type a task** — Pi operates in plan-first mode. It will ask you to define tasks before using tools.
 2. **Shift+Tab** — Cycle through operational modes (NORMAL → PLAN → SPEC → PIPELINE → TEAM → CHAIN)
-3. **Ctrl+X** — Cycle themes
+3. **F5** — Cycle themes
 4. **`/agents-team`** — Switch between agent teams
 5. **`/chain`** — Switch between chain workflows. Three phase-aligned chains: `plan`, `build-test`, `local-review`.
 6. **`/tex`** — Open Text Tools in the browser
@@ -104,7 +173,7 @@ Verify with `pi --list-models` — you should see `berget/...` and `sglang/RedHa
 | **agent-banner** | ASCII art banner on startup, auto-hides on first input |
 | **footer** | Status bar — model name, context %, working directory |
 | **agent-nav** | F1-F4 navigation shared across agent widgets |
-| **theme-cycler** | Ctrl+X to cycle through installed themes |
+| **theme-cycler** | F5 to cycle through installed themes |
 | **escape-cancel** | Double-ESC cancels all running operations |
 
 ### Task Management
@@ -236,7 +305,7 @@ The `/secure` command runs a comprehensive AI security sweep on any project and 
 
 ## Themes
 
-11 themes included. Cycle with **Ctrl+X**:
+11 themes included. Cycle with **F5** (F6 for previous):
 
 Catppuccin Mocha · Cyberpunk · Dracula · Everforest · Gruvbox · Midnight Ocean · Nord · Ocean Breeze · Rose Pine · Synthwave · Tokyo Night
 

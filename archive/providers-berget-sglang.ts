@@ -1,3 +1,8 @@
+// ARCHIVED — superseded by:
+//   - @bergetai/pi-provider (upstream Berget.AI provider, installed globally)
+//   - extensions/providers-sglang.ts (SGLang half only)
+// Kept for reference; not loaded by Pi.
+//
 // ABOUTME: Registers two custom OpenAI-compatible providers — Berget.AI (EU cloud) and
 // ABOUTME: local SGLang at http://10.99.99.85:8003 — alongside Pi's built-in providers.
 /**

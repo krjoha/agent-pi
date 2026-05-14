@@ -1,8 +1,8 @@
 // ABOUTME: Task Board Viewer — opens a GUI browser window showing a live Kanban board of agent work.
 // ABOUTME: Polls Commander MCP tools for tasks, agents, messages, and groups. Auto-refreshes every 3 seconds.
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { Text } from "@mariozechner/pi-tui";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";

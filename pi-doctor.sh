@@ -77,7 +77,7 @@ if command -v pi &>/dev/null; then
         pass "Pi CLI ${DIM}→ ${PI_PATH}${NC}"
     fi
 else
-    fail "Pi CLI not found — run: npm install -g @mariozechner/pi-coding-agent"
+    fail "Pi CLI not found — run: npm install -g @earendil-works/pi-coding-agent"
 fi
 
 # git

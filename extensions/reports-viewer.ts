@@ -1,8 +1,8 @@
 // ABOUTME: Persisted reports browser for plans, questions, specs, and completion reports.
 // ABOUTME: Opens a search-first /reports view with recent category sections and full-screen tables.
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { Text } from "@mariozechner/pi-tui";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
