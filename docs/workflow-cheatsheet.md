@@ -52,20 +52,9 @@ Two other commands:
 - `/chain-list` — show every chain with its step flow.
 - `/chain-clear` — hide the chain widget (chain remains active; this only removes the visual).
 
-## Chains vs pipelines
-
-Pi has **two** parallel workflow systems:
-
-| System | Slash commands | YAML | Use for |
-|---|---|---|---|
-| `agent-chain` (canonical) | `/chain`, `/chain-list`, `/chain-clear`, `/audit`, `/code-review`, … | `agents/agent-chain.yaml` | The Plan / Build / Ship workflow — this is the canonical one |
-| `pipeline-team` (older) | `/pipeline`, `/pipeline-status`, `/pipeline-reset`, `/pipeline-off`, `/pipeline-clear` | `.pi/agents/pipeline-team.yaml` | The older phase-gated pipeline UI |
-
-Stick to `/chain` unless you specifically want the pipeline-team UI. Both render a widget, but they don't share state — invoking `/pipeline` will not advance an active `/chain`, and vice versa.
-
 ## Keyboard
 
-- `shift+tab` — cycles **thinking levels** (off / low / medium / high). It does **not** switch chains or pipelines.
+- `shift+tab` — cycles **thinking levels** (off / low / medium / high). It does **not** switch chains.
 - There is no keybinding for chain switching; use the `/chain` slash command.
 - `Ctrl+P` — model picker (selecting a Berget or SGLang model).
 

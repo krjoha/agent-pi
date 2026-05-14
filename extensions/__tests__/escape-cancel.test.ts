@@ -83,8 +83,6 @@ describe("escape-cancel", () => {
 			delete g.__piHasRunningSubagents;
 			delete g.__piKillChainProc;
 			delete g.__piHasRunningChain;
-			delete g.__piKillPipelineProc;
-			delete g.__piHasRunningPipeline;
 			delete g.__piKillTeamProcs;
 			delete g.__piHasRunningTeam;
 		});
@@ -94,8 +92,6 @@ describe("escape-cancel", () => {
 			delete g.__piHasRunningSubagents;
 			delete g.__piKillChainProc;
 			delete g.__piHasRunningChain;
-			delete g.__piKillPipelineProc;
-			delete g.__piHasRunningPipeline;
 			delete g.__piKillTeamProcs;
 			delete g.__piHasRunningTeam;
 		});
@@ -112,12 +108,6 @@ describe("escape-cancel", () => {
 		it("hasRunningOperations detects running chain", () => {
 			g.__piActiveChain = "test-chain";
 			g.__piHasRunningChain = () => true;
-			expect(hasRunningOperations()).toBe(true);
-		});
-
-		it("hasRunningOperations detects running pipeline", () => {
-			g.__piActivePipeline = "test-pipeline";
-			g.__piHasRunningPipeline = () => true;
 			expect(hasRunningOperations()).toBe(true);
 		});
 
@@ -161,20 +151,6 @@ describe("escape-cancel", () => {
 			expect(ctx.ui.notify).toHaveBeenCalled();
 		});
 
-		it("cancelAll calls kill pipeline proc", () => {
-			const killPipeline = vi.fn(() => true);
-			g.__piKillPipelineProc = killPipeline;
-
-			const ctx = {
-				isIdle: () => true,
-				abort: vi.fn(),
-				ui: { notify: vi.fn() },
-			};
-
-			cancelAll(ctx);
-			expect(killPipeline).toHaveBeenCalled();
-		});
-
 		it("cancelAll calls kill team procs", () => {
 			const killTeam = vi.fn(() => 3);
 			g.__piKillTeamProcs = killTeam;
@@ -216,10 +192,6 @@ function hasRunningOperations(): boolean {
 		return true;
 	}
 
-	if (g.__piActivePipeline && typeof g.__piHasRunningPipeline === "function" && g.__piHasRunningPipeline()) {
-		return true;
-	}
-
 	if (typeof g.__piHasRunningTeam === "function" && g.__piHasRunningTeam()) {
 		return true;
 	}
@@ -243,10 +215,6 @@ function cancelAll(ctx: any) {
 
 	if (typeof g.__piKillChainProc === "function") {
 		if (g.__piKillChainProc()) cancelled = true;
-	}
-
-	if (typeof g.__piKillPipelineProc === "function") {
-		if (g.__piKillPipelineProc()) cancelled = true;
 	}
 
 	if (typeof g.__piKillTeamProcs === "function") {

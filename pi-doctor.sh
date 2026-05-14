@@ -178,28 +178,6 @@ else
     fail "Missing: $CONFIG_DIR/agent-chain.yaml"
 fi
 
-# pipeline-team.yaml
-if [ -f "$CONFIG_DIR/pipeline-team.yaml" ]; then
-    if node -e "
-        const yaml = require('$YAML_MOD');
-        const fs = require('fs');
-        const doc = yaml.parse(fs.readFileSync('$CONFIG_DIR/pipeline-team.yaml', 'utf-8'));
-        if (!doc || typeof doc !== 'object') process.exit(1);
-    " 2>/dev/null; then
-        PIPELINE_COUNT=$(node -e "
-            const yaml = require('$YAML_MOD');
-            const fs = require('fs');
-            const doc = yaml.parse(fs.readFileSync('$CONFIG_DIR/pipeline-team.yaml', 'utf-8'));
-            console.log(Object.keys(doc).length);
-        " 2>/dev/null || echo "?")
-        pass "pipeline-team.yaml ${DIM}(${PIPELINE_COUNT} pipelines)${NC}"
-    else
-        fail "pipeline-team.yaml exists but contains invalid YAML"
-    fi
-else
-    fail "Missing: $CONFIG_DIR/pipeline-team.yaml"
-fi
-
 # teams.yaml
 if [ -f "$CONFIG_DIR/teams.yaml" ]; then
     TEAM_COUNT=$(node -e "

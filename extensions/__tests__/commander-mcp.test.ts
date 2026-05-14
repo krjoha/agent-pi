@@ -64,8 +64,8 @@ describe("commander-mcp extension", () => {
 		mod.default(pi as any);
 	});
 
-	it("should register all 8 commander tools", () => {
-		expect(pi.registerTool).toHaveBeenCalledTimes(8);
+	it("should register all 9 commander tools", () => {
+		expect(pi.registerTool).toHaveBeenCalledTimes(9);
 		const names = pi._tools.map(t => t.name);
 		expect(names).toContain("commander_task");
 		expect(names).toContain("commander_session");
@@ -75,6 +75,7 @@ describe("commander-mcp extension", () => {
 		expect(names).toContain("commander_mailbox");
 		expect(names).toContain("commander_orchestration");
 		expect(names).toContain("commander_dependency");
+		expect(names).toContain("commander_agentmail");
 	});
 
 	it("should register tools with operation as required parameter", () => {

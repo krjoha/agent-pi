@@ -76,7 +76,7 @@ another-team:
 
 ### Agent Orchestration Patterns
 - **Dispatcher**: Primary agent delegates via dispatch_agent tool
-- **Pipeline**: Sequential chain of agents (scout → planner → builder → reviewer)
+- **Chain**: Sequential chain of agents (scout → planner → builder → reviewer)
 - **Parallel**: Multiple agents query simultaneously, results collected
 - **Specialist team**: Each agent has a narrow domain, orchestrator routes work
 

@@ -10,7 +10,7 @@
  * $ORIGINAL is always the user's original prompt.
  *
  * The primary Pi agent has NO codebase tools — it can ONLY kick off the
- * pipeline via the `run_chain` tool. On boot you select a chain; the
+ * chain via the `run_chain` tool. On boot you select a chain; the
  * agent decides when to run it based on the user's prompt.
  *
  * Agents maintain session context within a Pi session — re-running the
@@ -34,7 +34,7 @@ import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { applyExtensionDefaults } from "./lib/themeMap.ts";
 import { outputLine } from "./lib/output-box.ts";
-import { statusButton } from "./lib/pipeline-render.ts";
+import { statusButton } from "./lib/output-box.ts";
 import { DEFAULT_SUBAGENT_MODEL } from "./lib/defaults.ts";
 import { resolveToolkitWorkerModel } from "./lib/toolkit-cli.ts";
 import { loadAgentModelsConfig, resolveAgentModelString, type AgentModelsConfig } from "./lib/agent-defs.ts";
@@ -251,7 +251,7 @@ export default function (pi: ExtensionAPI) {
 
 	function updateWidget() {
 		if (!widgetCtx) return;
-		// Only show widget when pipeline is actually running (at least one non-pending step)
+		// Only show widget when chain is actually running (at least one non-pending step)
 		const hasActiveStep = stepStates.some(s => s.status !== "pending");
 		if (!hasActiveStep) return;
 		widgetCtx.ui.setWidget("agent-chain", (_tui: any, theme: any) => {
@@ -497,7 +497,7 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "run_chain",
 		label: "Run Chain",
-		description: "Execute the active agent chain pipeline. Each step runs sequentially — output from one step feeds into the next. Agents maintain session context across runs.",
+		description: "Execute the active agent chain. Each step runs sequentially — output from one step feeds into the next. Agents maintain session context across runs.",
 		parameters: Type.Object({
 			task: Type.String({ description: "The task/prompt for the chain to process" }),
 		}),
@@ -952,7 +952,7 @@ export default function (pi: ExtensionAPI) {
 		const flow = activeChain.steps.map(s => displayName(s.agent)).join(" → ");
 		const desc = activeChain.description ? `\n${activeChain.description}` : "";
 
-		// Build pipeline steps summary
+		// Build chain steps summary
 		const steps = activeChain.steps.map((s, i) => {
 			const agentDef = allAgents.get(s.agent.toLowerCase());
 			const agentDesc = agentDef?.description || "";
@@ -1004,13 +1004,13 @@ ${agentCatalog}
 
 ## When to Use run_chain
 - Significant work: new features, refactors, multi-file changes, anything non-trivial
-- Tasks that benefit from the full pipeline: planning, building, reviewing
+- Tasks that benefit from the full chain: planning, building, reviewing
 - When you want structured, multi-agent collaboration on a problem
 
 ## When to Work Directly
 - Simple one-off commands: reading a file, checking status, listing contents
 - Quick lookups, small edits, answering questions about the codebase
-- Anything you can handle in a single step without needing the pipeline
+- Anything you can handle in a single step without needing the chain
 
 ## How run_chain Works
 - Pass a clear task description to run_chain

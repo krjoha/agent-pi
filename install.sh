@@ -282,6 +282,50 @@ else
     fi
 fi
 
+# ═══════════════════════════════════════════════════════════════════
+# Configure scoped models (Ctrl+P toggles only these 5 models)
+# ═══════════════════════════════════════════════════════════════════
+step "Configuring scoped models"
+
+MODELS_CONFIGURED=$(node -e "
+    const fs = require('fs');
+    const s = JSON.parse(fs.readFileSync('$SETTINGS_FILE_WIN', 'utf-8'));
+    const expected = [
+        'sglang/RedHatAI/Qwen3.6-35B-A3B-NVFP4',
+        'berget/mistralai/Mistral-Medium-3.5-128B',
+        'berget/zai-org/GLM-4.7-FP8',
+        'berget/google/gemma-4-31B-it',
+        'berget/moonshotai/Kimi-K2.6'
+    ];
+    const current = s.enabledModels || [];
+    const match = current.length === expected.length && expected.every(m => current.includes(m));
+    console.log(match ? 'yes' : 'no');
+" 2>/dev/null || echo "no")
+
+if [ "$MODELS_CONFIGURED" = "yes" ]; then
+    success "Scoped models already configured"
+else
+    if [ "$DRY_RUN" -eq 1 ]; then
+        info "[dry-run] Would set defaultProvider, defaultModel, and enabledModels in ${DIM}$SETTINGS_FILE${NC}"
+    else
+        node -e "
+        const fs = require('fs');
+        const s = JSON.parse(fs.readFileSync('$SETTINGS_FILE_WIN', 'utf-8'));
+        s.defaultProvider = 'berget';
+        s.defaultModel = 'moonshotai/Kimi-K2.6';
+        s.enabledModels = [
+            'sglang/RedHatAI/Qwen3.6-35B-A3B-NVFP4',
+            'berget/mistralai/Mistral-Medium-3.5-128B',
+            'berget/zai-org/GLM-4.7-FP8',
+            'berget/google/gemma-4-31B-it',
+            'berget/moonshotai/Kimi-K2.6'
+        ];
+        fs.writeFileSync('$SETTINGS_FILE_WIN', JSON.stringify(s, null, 2) + '\n');
+    "
+        success "Scoped models configured ${DIM}(5 models available via Ctrl+P)${NC}"
+    fi
+fi
+
 # Free Shift+Tab for mode-cycler by unbinding cycleThinkingLevel
 KEYBINDINGS_FILE="$PI_AGENT_DIR/keybindings.json"
 KEYBINDINGS_FILE_WIN="$(to_win_path "$KEYBINDINGS_FILE")"
@@ -322,15 +366,6 @@ if [ -f "$CONFIG_DIR/agent-chain.yaml" ]; then
     success "agent-chain.yaml exists"
 else
     fail "Missing: $CONFIG_DIR/agent-chain.yaml"
-    fail "This file should be in the git repo. Try: git checkout -- $CONFIG_DIR/"
-    ERRORS=$((ERRORS + 1))
-fi
-
-# Check pipeline-team.yaml
-if [ -f "$CONFIG_DIR/pipeline-team.yaml" ]; then
-    success "pipeline-team.yaml exists"
-else
-    fail "Missing: $CONFIG_DIR/pipeline-team.yaml"
     fail "This file should be in the git repo. Try: git checkout -- $CONFIG_DIR/"
     ERRORS=$((ERRORS + 1))
 fi
@@ -490,7 +525,7 @@ else
     echo -e "  ${BOLD}Verify anytime:${NC}"
     echo -e "    ${CYAN}./pi-doctor.sh${NC}"
     echo ""
-    echo -e "  ${BOLD}Modes:${NC} ${DIM}Ctrl+Shift+M to cycle NORMAL → PLAN → SPEC → PIPELINE → TEAM → CHAIN${NC}"
+    echo -e "  ${BOLD}Modes:${NC} ${DIM}Ctrl+Shift+M to cycle NORMAL → PLAN → SPEC → TEAM → CHAIN${NC}"
     echo -e "  ${BOLD}Themes:${NC} ${DIM}F5 to cycle through $THEME_COUNT themes${NC}"
     echo ""
 fi

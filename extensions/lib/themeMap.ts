@@ -37,7 +37,7 @@ export const THEME_MAP: Record<string, string> = {
 	"system-select":      "midnight-ocean",
 	"theme-cycler":       "midnight-ocean",
 	"mic":                "midnight-ocean",
-	"pipeline-team":      "midnight-ocean",
+
 	"tasks":              "midnight-ocean",
 	"plan-mode":          "midnight-ocean",
 	"tool-counter":       "midnight-ocean",

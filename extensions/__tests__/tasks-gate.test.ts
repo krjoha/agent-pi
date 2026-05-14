@@ -5,7 +5,7 @@ import { describe, it, expect } from "vitest";
 
 // This mirrors the bypass logic from tasks.ts (lines ~237-240).
 // The function under test is the allowlist check extracted from the tool_call handler.
-const TASK_GATE_BYPASS_TOOLS = ["tasks", "dispatch_agent", "dispatch_agents", "ask_user", "run_chain", "advance_phase", "pipeline_status"];
+const TASK_GATE_BYPASS_TOOLS = ["tasks", "dispatch_agent", "dispatch_agents", "ask_user", "run_chain", "advance_phase"];
 const READ_ONLY_BYPASS_TOOLS = ["read", "grep", "find", "ls", "glob"];
 
 function shouldBypassTaskGate(toolName: string): boolean {
@@ -69,13 +69,10 @@ describe("shouldBypassTaskGate", () => {
 		expect(shouldBypassTaskGate("commander_dependency")).toBe(true);
 	});
 
-	it("should bypass for 'advance_phase' pipeline tool", () => {
+	it("should bypass for 'advance_phase' workflow tool", () => {
 		expect(shouldBypassTaskGate("advance_phase")).toBe(true);
 	});
 
-	it("should bypass for 'pipeline_status' pipeline tool", () => {
-		expect(shouldBypassTaskGate("pipeline_status")).toBe(true);
-	});
 });
 
 describe("read-only tool bypass", () => {

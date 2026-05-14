@@ -16,10 +16,10 @@
 
 [Pi](https://github.com/badlogic/pi-mono) is a terminal-based AI coding agent by [@badlogic](https://github.com/badlogic). Out of the box it's a single-agent assistant with tool use, conversation memory, and a TUI.
 
-**agent** is a Pi package — **44 extensions, 11 themes, and 20+ skills** that transform Pi into something more:
+**agent** is a Pi package — **43 extensions, 11 themes, and 20+ skills** that transform Pi into something more:
 
-- **6 operational modes** — NORMAL, PLAN, SPEC, PIPELINE, TEAM, CHAIN
-- **Multi-agent orchestration** — dispatch teams, run sequential chains, or execute parallel pipelines
+- **5 operational modes** — NORMAL, PLAN, SPEC, TEAM, CHAIN
+- **Multi-agent orchestration** — dispatch teams, run sequential chains, or execute parallel agent teams
 - **Security hardened** — pre-tool-hook guard blocks destructive commands, detects prompt injection, prevents data exfiltration
 - **Browser-based viewers** — interactive plan review, completion reports with rollback, spec approval with inline comments
 - **11 themes** — Catppuccin, Dracula, Nord, Synthwave, Tokyo Night, and more
@@ -86,13 +86,25 @@ This populates `defaultProvider: "berget"` in `~/.pi/agent/settings.json`. The B
 
 #### 3. Pick the default model
 
-Edit `~/.pi/agent/settings.json` and set:
+The installer already sets this, but you can override `~/.pi/agent/settings.json`:
 
 ```json
 "defaultModel": "moonshotai/Kimi-K2.6"
 ```
 
 Any model id from `https://api.berget.ai/v1/models` works (Kimi-K2.6, GLM-4.7-FP8, Gemma-4-31B-it, Mistral-Medium-3.5, gpt-oss-120b, Llama-3.3-70B, …).
+
+**Model scoping (Ctrl+P):** The installer also writes `enabledModels` so `Ctrl+P` only cycles through the five models this suite is designed around:
+
+| # | Model | Provider |
+|---|-------|----------|
+| 1 | `sglang/RedHatAI/Qwen3.6-35B-A3B-NVFP4` | SGLang (local) |
+| 2 | `berget/mistralai/Mistral-Medium-3.5-128B` | Berget.AI |
+| 3 | `berget/zai-org/GLM-4.7-FP8` | Berget.AI |
+| 4 | `berget/google/gemma-4-31B-it` | Berget.AI |
+| 5 | `berget/moonshotai/Kimi-K2.6` | Berget.AI |
+
+No other Berget models show up when cycling. To change the list, edit `enabledModels` in `~/.pi/agent/settings.json`. Empty array = all models available.
 
 #### 4. Install the CodeScene Code Health MCP binary
 
@@ -145,7 +157,7 @@ For day-to-day workflow commands, read [`docs/workflow-cheatsheet.md`](docs/work
 ### First Steps
 
 1. **Type a task** — Pi operates in plan-first mode. It will ask you to define tasks before using tools.
-2. **Shift+Tab** — Cycle through operational modes (NORMAL → PLAN → SPEC → PIPELINE → TEAM → CHAIN)
+2. **Shift+Tab** — Cycle through operational modes (NORMAL → PLAN → SPEC → TEAM → CHAIN)
 3. **F5** — Cycle themes
 4. **`/agents-team`** — Switch between agent teams
 5. **`/chain`** — Switch between chain workflows. Three phase-aligned chains: `plan`, `build-test`, `local-review`.
@@ -158,7 +170,7 @@ For day-to-day workflow commands, read [`docs/workflow-cheatsheet.md`](docs/work
 ├── extensions/          43 TypeScript extensions + lib/
 ├── themes/              11 custom terminal themes
 ├── skills/              20+ skill packs
-├── agents/              Agent definitions + chain/pipeline/team YAML
+├── agents/              Agent definitions + chain/team YAML
 ├── commands/            Toolkit slash commands
 ├── prompts/             Prompt templates
 └── tex/                 Text Tools — standalone text manipulation app
@@ -188,9 +200,9 @@ For day-to-day workflow commands, read [`docs/workflow-cheatsheet.md`](docs/work
 
 | Extension | Description |
 |-----------|-------------|
-| **mode-cycler** | Shift+Tab cycles NORMAL / PLAN / SPEC / PIPELINE / TEAM / CHAIN |
+| **mode-cycler** | Shift+Tab cycles NORMAL / PLAN / SPEC / TEAM / CHAIN |
 
-Each mode injects a tailored system prompt. PLAN mode enforces plan-first workflow. SPEC mode drives spec-driven development. TEAM/CHAIN/PIPELINE modes activate their respective orchestration systems.
+Each mode injects a tailored system prompt. PLAN mode enforces plan-first workflow. SPEC mode drives spec-driven development. TEAM/CHAIN modes activate their respective orchestration systems.
 
 ### Multi-Agent Orchestration
 
@@ -198,7 +210,6 @@ Each mode injects a tailored system prompt. PLAN mode enforces plan-first workfl
 |-----------|-------------|
 | **agent-team** | Dispatch-only orchestrator — primary agent delegates to specialists via `dispatch_agent` |
 | **agent-chain** | Sequential pipeline — each step's output feeds into the next via `$INPUT` |
-| **pipeline-team** | 5-phase hybrid — UNDERSTAND → GATHER → PLAN → EXECUTE → REVIEW |
 | **subagent-widget** | Background subagent management with live status widgets |
 | **toolkit-commands** | Dynamic slash commands from markdown files |
 
@@ -258,7 +269,6 @@ Each mode injects a tailored system prompt. PLAN mode enforces plan-first workfl
 | **SPEC** | Shift+Tab | Spec-driven — shape → requirements → tasks → implement |
 | **TEAM** | Shift+Tab | Dispatcher mode — primary delegates, specialists execute |
 | **CHAIN** | Shift+Tab | Sequential pipeline — step outputs chain into next step |
-| **PIPELINE** | Shift+Tab | 5-phase hybrid with parallel dispatch |
 
 ## Multi-Agent Orchestration
 
@@ -289,9 +299,6 @@ plan-build-review:
       prompt: "Review this implementation:\n\n$INPUT"
 ```
 
-### Pipelines
-
-Pipelines are defined in `agents/pipeline-team.yaml` and combine sequential phases with parallel agent dispatch.
 
 ## Security
 
@@ -325,7 +332,7 @@ A lightweight, zero-dependency text manipulation app bundled in `tex/`. Open it 
 | Extensions not loading | `pi install git:github.com/ruizrica/agent-pi` — reinstall the package |
 | No themes available | Same as above — themes are auto-discovered from the package |
 | Shift+Tab not working | Ensure mode-cycler extension loaded — check `pi config` |
-| No chains/pipelines | Agent configs at `agents/` are loaded automatically by extensions |
+| No chains | Agent configs at `agents/` are loaded automatically by extensions |
 
 ## Built on Pi
 

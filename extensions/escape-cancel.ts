@@ -1,4 +1,4 @@
-// ABOUTME: Double-tap ESC cancels all running operations (agent stream, subagents, chains, pipelines).
+// ABOUTME: Double-tap ESC cancels all running operations (agent stream, subagents, chains, teams).
 // ABOUTME: Listens for raw terminal ESC input and detects two presses within 400ms.
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -34,12 +34,7 @@ export default function (pi: ExtensionAPI) {
 			if (g.__piKillChainProc()) cancelled = true;
 		}
 
-		// 4. Kill running pipeline processes (exposed by pipeline-team.ts)
-		if (typeof g.__piKillPipelineProc === "function") {
-			if (g.__piKillPipelineProc()) cancelled = true;
-		}
-
-		// 5. Kill running team agent processes (exposed by agent-team.ts)
+			// 4. Kill running team agent processes (exposed by agent-team.ts)
 		if (typeof g.__piKillTeamProcs === "function") {
 			const killed = g.__piKillTeamProcs();
 			if (killed > 0) cancelled = true;
@@ -75,7 +70,7 @@ export default function (pi: ExtensionAPI) {
 		});
 	}
 
-	/** Check if there are running subagents, chains, or pipelines. */
+	/** Check if there are running subagents, chains, or teams. */
 	function hasRunningOperations(): boolean {
 		const g = globalThis as any;
 
@@ -86,11 +81,6 @@ export default function (pi: ExtensionAPI) {
 
 		// Check chain
 		if (g.__piActiveChain && typeof g.__piHasRunningChain === "function" && g.__piHasRunningChain()) {
-			return true;
-		}
-
-		// Check pipeline
-		if (g.__piActivePipeline && typeof g.__piHasRunningPipeline === "function" && g.__piHasRunningPipeline()) {
 			return true;
 		}
 

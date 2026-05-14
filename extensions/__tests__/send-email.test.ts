@@ -351,9 +351,11 @@ describe("Feature: Agent Email Sending", () => {
 			sendEmailExt(pi as any);
 			const tool = pi.getTool();
 
-			const result = tool.renderCall({ type: "report", to: "user@test.com" }, mockTheme);
-			expect(result.content).toContain("report");
-			expect(result.content).toContain("user@test.com");
+			const textComponent = tool.renderCall({ type: "report", to: "user@test.com" }, mockTheme);
+			const lines = textComponent.render(100);
+			const output = lines.join("\n");
+			expect(output).toContain("report");
+			expect(output).toContain("user@test.com");
 		});
 
 		it("renderResult shows success", () => {
@@ -361,12 +363,14 @@ describe("Feature: Agent Email Sending", () => {
 			sendEmailExt(pi as any);
 			const tool = pi.getTool();
 
-			const result = tool.renderResult(
+			const textComponent = tool.renderResult(
 				{ content: [{ type: "text", text: "Email sent successfully" }], details: { success: true } },
 				{},
 				mockTheme,
 			);
-			expect(result.content).toContain("✓");
+			const lines = textComponent.render(100);
+			const output = lines.join("\n");
+			expect(output).toContain("✓");
 		});
 
 		it("renderResult shows error", () => {
@@ -374,12 +378,14 @@ describe("Feature: Agent Email Sending", () => {
 			sendEmailExt(pi as any);
 			const tool = pi.getTool();
 
-			const result = tool.renderResult(
+			const textComponent = tool.renderResult(
 				{ content: [{ type: "text", text: "failed: no_recipient" }], details: { error: "no_recipient", success: false } },
 				{},
 				mockTheme,
 			);
-			expect(result.content).toContain("failed");
+			const lines = textComponent.render(100);
+			const output = lines.join("\n");
+			expect(output).toContain("failed");
 		});
 	});
 });

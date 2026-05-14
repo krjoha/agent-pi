@@ -1,4 +1,4 @@
-// ABOUTME: Cycles operational modes (NORMAL/PLAN/SPEC/PIPELINE/TEAM/CHAIN) via Shift+Tab.
+// ABOUTME: Cycles operational modes (NORMAL/PLAN/SPEC/TEAM/CHAIN) via Shift+Tab.
 // ABOUTME: Gates which extension's before_agent_start fires and injects PLAN/SPEC prompts.
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -163,9 +163,9 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "set_mode",
 		label: "Set Mode",
-		description: "Switch the operational mode. Call this from NORMAL mode to activate PLAN, SPEC, TEAM, CHAIN, or PIPELINE based on task classification.",
+		description: "Switch the operational mode. Call this from NORMAL mode to activate PLAN, SPEC, TEAM, or CHAIN based on task classification.",
 		parameters: Type.Object({
-			mode: Type.String({ description: "Target mode: NORMAL, PLAN, SPEC, PIPELINE, TEAM, or CHAIN" }),
+			mode: Type.String({ description: "Target mode: NORMAL, PLAN, SPEC, TEAM, or CHAIN" }),
 			reason: Type.Optional(Type.String({ description: "Why this mode was chosen" })),
 		}),
 
@@ -218,7 +218,6 @@ export default function (pi: ExtensionAPI) {
 			return { systemPrompt: buildNormalPrompt({
 				commanderAvailable: !!g.__piCommanderAvailable,
 				activeChain: g.__piActiveChain || null,
-				activePipeline: g.__piActivePipeline || null,
 				scoutId,
 			})};
 		}

@@ -1,5 +1,5 @@
 // Test suite for chain widget visibility gate
-// Validates that the widget only shows when pipeline is actually running
+// Validates that the widget only shows when chain is actually running
 
 import { describe, it, expect } from "vitest";
 

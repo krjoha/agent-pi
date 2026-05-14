@@ -306,7 +306,7 @@ export default function (pi: ExtensionAPI) {
 		if (process.env.PI_SUBAGENT === "1") return { block: false };
 		if (event.toolName === "tasks") return { block: false };
 		// Communication, orchestration, dispatcher, and Commander MCP tools bypass the gate
-		if (["dispatch_agent", "dispatch_agents", "ask_user", "run_chain", "advance_phase", "pipeline_status"].includes(event.toolName)) return { block: false };
+		if (["dispatch_agent", "dispatch_agents", "ask_user", "run_chain", "advance_phase"].includes(event.toolName)) return { block: false };
 		if (event.toolName.startsWith("commander_")) return { block: false };
 
 		// Allow read-only exploration without task ceremony

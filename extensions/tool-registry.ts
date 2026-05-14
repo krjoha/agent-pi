@@ -50,8 +50,8 @@ const CATEGORY_RULES: { category: string; names: string[]; keywords: string[] }[
 	},
 	{
 		category: "workflow",
-		names: ["tasks", "set_mode", "advance_phase", "dispatch_agents", "pipeline_status", "run_chain", "cycle_memory"],
-		keywords: ["task", "mode", "pipeline", "phase", "workflow", "chain"],
+		names: ["tasks", "set_mode", "advance_phase", "dispatch_agents", "run_chain", "cycle_memory"],
+		keywords: ["task", "mode", "phase", "workflow", "chain"],
 	},
 ];
 
@@ -86,7 +86,7 @@ function detectCategory(name: string, description: string): string {
 const TAG_KEYWORDS = [
 	"file", "read", "write", "edit", "delete", "create", "search", "find",
 	"bash", "command", "shell", "terminal", "execute", "run",
-	"task", "project", "workflow", "pipeline", "plan", "mode",
+	"task", "project", "workflow", "plan", "mode",
 	"agent", "subagent", "dispatch", "spawn", "parallel",
 	"test", "debug", "screenshot", "capture", "audit", "accessibility",
 	"browser", "web", "url", "page", "navigate", "click",

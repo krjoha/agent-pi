@@ -5,8 +5,8 @@ import { describe, it, expect } from "vitest";
 import { MODES, nextMode, prevMode, modeLabel, modeColor, modeTextAnsi } from "../lib/mode-cycler-logic.ts";
 
 describe("MODES", () => {
-	it("has exactly 6 entries in correct order", () => {
-		expect(MODES).toEqual(["NORMAL", "PLAN", "SPEC", "PIPELINE", "TEAM", "CHAIN"]);
+	it("has exactly 5 entries in correct order", () => {
+		expect(MODES).toEqual(["NORMAL", "PLAN", "SPEC", "TEAM", "CHAIN"]);
 	});
 });
 
@@ -19,12 +19,8 @@ describe("nextMode", () => {
 		expect(nextMode("PLAN")).toBe("SPEC");
 	});
 
-	it("cycles SPEC → PIPELINE", () => {
-		expect(nextMode("SPEC")).toBe("PIPELINE");
-	});
-
-	it("cycles PIPELINE → TEAM", () => {
-		expect(nextMode("PIPELINE")).toBe("TEAM");
+	it("cycles SPEC → TEAM", () => {
+		expect(nextMode("SPEC")).toBe("TEAM");
 	});
 
 	it("cycles TEAM → CHAIN", () => {
@@ -48,6 +44,14 @@ describe("prevMode", () => {
 	it("cycles CHAIN → TEAM", () => {
 		expect(prevMode("CHAIN")).toBe("TEAM");
 	});
+
+	it("cycles TEAM → SPEC", () => {
+		expect(prevMode("TEAM")).toBe("SPEC");
+	});
+
+	it("cycles SPEC → PLAN", () => {
+		expect(prevMode("SPEC")).toBe("PLAN");
+	});
 });
 
 describe("modeLabel", () => {
@@ -61,10 +65,6 @@ describe("modeLabel", () => {
 
 	it("returns [SPEC] for SPEC", () => {
 		expect(modeLabel("SPEC")).toBe("[SPEC]");
-	});
-
-	it("returns [PIPELINE] for PIPELINE", () => {
-		expect(modeLabel("PIPELINE")).toBe("[PIPELINE]");
 	});
 
 	it("returns [TEAM] for TEAM", () => {
@@ -89,10 +89,6 @@ describe("modeColor", () => {
 		expect(modeColor("SPEC")).toBe("accent");
 	});
 
-	it("returns accent for PIPELINE", () => {
-		expect(modeColor("PIPELINE")).toBe("accent");
-	});
-
 	it("returns accent for TEAM", () => {
 		expect(modeColor("TEAM")).toBe("accent");
 	});
@@ -113,10 +109,6 @@ describe("modeTextAnsi", () => {
 
 	it("returns bold white for SPEC (blue bg)", () => {
 		expect(modeTextAnsi("SPEC")).toBe("\x1b[1;97m");
-	});
-
-	it("returns bold white for PIPELINE (blue bg)", () => {
-		expect(modeTextAnsi("PIPELINE")).toBe("\x1b[1;97m");
 	});
 
 	it("returns bold white for TEAM (blue bg)", () => {

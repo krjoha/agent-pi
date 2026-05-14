@@ -18,7 +18,6 @@ Commander is connected. ALWAYS use these tools for dashboard visibility:
 export interface NormalPromptOpts {
 	commanderAvailable: boolean;
 	activeChain: string | null;
-	activePipeline: string | null;
 	scoutId?: number | null;
 }
 
@@ -27,9 +26,6 @@ export function buildNormalPrompt(opts: NormalPromptOpts): string {
 	const chainStatus = opts.activeChain
 		? `Active: "${opts.activeChain}" — ready to use`
 		: "Not active — use /chain to select a chain first";
-	const pipelineStatus = opts.activePipeline
-		? `Active: "${opts.activePipeline}" — ready to use`
-		: "Not active — use /pipeline to activate first";
 
 	const commanderSection = opts.commanderAvailable
 		? buildCommanderSection()
@@ -78,7 +74,6 @@ ${scoutSection}
 | SPEC     | New features needing requirements gathering and a written spec.    |
 | TEAM     | Parallel specialist dispatch — independent workstreams.            |
 | CHAIN    | Sequential pipeline — audit, migrate, structured multi-step flow.  |
-| PIPELINE | Full phased orchestration (gather→plan→execute→review). Complex.   |
 
 ## How to Decide
 
@@ -91,7 +86,6 @@ ${scoutSection}
 
 ## Mode Availability
 - CHAIN: ${chainStatus}
-- PIPELINE: ${pipelineStatus}
 ${commanderSection}`;
 }
 

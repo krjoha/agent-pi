@@ -602,7 +602,7 @@ export function generateWebChatHTML(opts: { port: number; logoDataUri?: string }
     { name: 'secure', desc: 'Security status' },
     { name: 'agents-team', desc: 'Manage agent team' },
     { name: 'chain', desc: 'Run agent chain' },
-    { name: 'pipeline', desc: 'Pipeline orchestration' },
+
     { name: 'spec', desc: 'Open spec viewer' },
     { name: 'reports', desc: 'Browse saved reports' },
     { name: 'replay', desc: 'Session replay' },
@@ -658,7 +658,7 @@ export function generateWebChatHTML(opts: { port: number; logoDataUri?: string }
   }
 
   // ── Mode Cycling ────────────────────────────────────
-  const MODES = ['NORMAL','PLAN','SPEC','PIPELINE','TEAM','CHAIN'];
+  const MODES = ['NORMAL','PLAN','SPEC','TEAM','CHAIN'];
   let currentMode = 'NORMAL';
   const modeBar = document.getElementById('mode-bar');
 

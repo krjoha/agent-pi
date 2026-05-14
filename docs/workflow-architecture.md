@@ -85,7 +85,7 @@ The target workflow has three phases with explicit human approval gates. Every p
 2. **Agent cleanup** — remove agents that do not fit the personal workflow; reassign core agent roles to the best-fit model for each task.
 3. **SGLang performance** — exploit radix caching, speculative decoding, and structured output (XGrammar) for maximum tokens-per-second on local inference.
 4. **Parallel forked review** — use the SGL runtime's prefix-sharing behavior to run N persona-specific reviews against the same code+context at near the cost of one.
-5. **Workflow chains** — align `agent-chain.yaml` and `pipeline-team.yaml` with the above.
+5. **Workflow chains** — align `agent-chain.yaml` with the above.
 
 ---
 
@@ -235,7 +235,7 @@ The updated `agents/models.json` should reflect the following reasoning:
 | knight | berget | zai-org/GLM-4.7-FP8 | security review; reasoning model, 200K context |
 | rlm-subcall | sglang | RedHatAI/Qwen3.6-35B-A3B-NVFP4 | internal sub-calls; local speed preferred |
 
-**Concurrency note:** The SGLang server runs in speculative mode (NEXTN) with `--max-running-requests 2`. Any chain that fires more than 2 parallel SGLang agents simultaneously will queue. For pipelines with heavy parallelism (the 4-parallel-scout step in `code-review`), either: (a) accept the queue and keep speculative mode for better single-stream speed, or (b) restart SGLang in high-concurrency mode (`--max-running-requests 16`, drop speculative flags) before running the pipeline. Document this tradeoff in the chain descriptions.
+**Concurrency note:** The SGLang server runs in speculative mode (NEXTN) with `--max-running-requests 2`. Any chain that fires more than 2 parallel SGLang agents simultaneously will queue. For chains with heavy parallelism (the 4-parallel-scout step in `code-review`), either: (a) accept the queue and keep speculative mode for better single-stream speed, or (b) restart SGLang in high-concurrency mode (`--max-running-requests 16`, drop speculative flags) before running the chain. Document this tradeoff in the chain descriptions.
 
 ### 4.3 New agents to create
 
@@ -645,7 +645,7 @@ No chain needed. Step 10 is a human source code review (git diff, reading the fi
 - `plan-build` — superseded by the split. Retire or alias.
 - `plan-review-plan` — absorbed into `plan-refine` above.
 - `test-fix` — keep as a focused re-entry chain when the human wants AI to fix a specific test failure.
-- `full-pipeline` — retire; replaced by the 3-phase workflow.
+- `full-pipeline` — retired.
 
 ### 8.6 Revising `code-review`
 
@@ -689,7 +689,6 @@ scout (arch)  →  ranger (DRY)  →  scout (deps)  →  scout (tests)
 | `agents/synthesizer.md` | New | Aggregates parallel review outputs |
 | `skills/sgl-fork-review/` | New | Parallel forked review skill (Approach A or B) |
 | `agents/agent-chain.yaml` | Modify | Add `plan`, `plan-refine`, `build-test`, `local-review`; revise `code-review`; retire `plan-build-review`, `full-pipeline` |
-| `agents/pipeline-team.yaml` | Modify | Add 3-phase pipeline entries mirroring new chains |
 | `agents/reviewer.md` | Modify | Restructure system prompt for radix cache efficiency |
 | `agents/scout.md` | Modify | Same — stable prefix, variable task in user turn |
 | `agents/builder.md` | Modify | Same |

@@ -137,7 +137,7 @@ chain-b:
 	});
 
 	it("should handle a chain with many steps", () => {
-		const yaml = `full-pipeline:
+		const yaml = `full-chain:
   description: "End-to-end"
   steps:
     - agent: scout

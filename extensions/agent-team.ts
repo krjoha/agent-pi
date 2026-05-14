@@ -31,7 +31,7 @@ import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { applyExtensionDefaults } from "./lib/themeMap.ts";
 
-import { statusButton } from "./lib/pipeline-render.ts";
+import { statusButton } from "./lib/output-box.ts";
 import { DEFAULT_SUBAGENT_MODEL } from "./lib/defaults.ts";
 import { loadAgentModelsConfig, loadToolkitModelsConfig, resolveAgentModelString, scanToolkitAgentDefs, type AgentModelsConfig } from "./lib/agent-defs.ts";
 import { resolveToolkitWorkerModel, isToolkitCliAgent, spawnToolkitWorker } from "./lib/toolkit-cli.ts";

@@ -190,7 +190,7 @@ echo ""
 }
 
 function scenarioModes(captureDir: string, ts: string, opts: CaptureOptions, absCaptureDir: string): string {
-	const modes = ["NORMAL", "PLAN", "SPEC", "PIPELINE", "TEAM", "CHAIN"];
+	const modes = ["NORMAL", "PLAN", "SPEC", "TEAM", "CHAIN"];
 	const lines = [tapeHeader(captureDir, ts, opts)];
 
 	// Write a helper script that shows all mode banners
@@ -206,8 +206,6 @@ echo ""
 echo -e "\${BG_BLUE}\${FG_WHITE} PLAN \${PAD}\${RST}"
 echo ""
 echo -e "\${BG_BLUE}\${FG_WHITE} SPEC \${PAD}\${RST}"
-echo ""
-echo -e "\${BG_BLUE}\${FG_WHITE} PIPELINE \${PAD}\${RST}"
 echo ""
 echo -e "\${BG_BLUE}\${FG_WHITE} TEAM \${PAD}\${RST}"
 echo ""
