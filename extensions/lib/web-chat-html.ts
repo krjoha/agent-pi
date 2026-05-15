@@ -256,6 +256,9 @@ export function generateWebChatHTML(opts: { port: number; logoDataUri?: string }
   }
   .assistant-bubble ul, .assistant-bubble ol { padding-left: 1.5em; margin: 0.4em 0; }
   .assistant-bubble li { margin: 0.2em 0; }
+  .assistant-bubble li.task { list-style: none; margin-left: -1.2em; }
+  .assistant-bubble li.task input { margin-right: 6px; vertical-align: middle; accent-color: var(--accent); }
+  .assistant-bubble del { color: var(--text-muted); }
   .assistant-bubble blockquote {
     border-left: 3px solid var(--accent); padding-left: 12px;
     margin: 8px 0; color: var(--text-muted);
@@ -733,17 +736,31 @@ export function generateWebChatHTML(opts: { port: number; logoDataUri?: string }
     html = html.replace(/^###\\s+(.+)$/gm, '<h3>$1</h3>');
     html = html.replace(/^##\\s+(.+)$/gm, '<h2>$1</h2>');
     html = html.replace(/^#\\s+(.+)$/gm, '<h1>$1</h1>');
+    // GFM tables: header row | separator row | 1+ body rows
+    html = html.replace(/^\\|(.+)\\|\\n\\|([\\s\\-:|]+)\\|\\n((?:\\|.*\\|(?:\\n|$))+)/gm, (_m, header, sep, body) => {
+      const cells = r => r.trim().replace(/^\\||\\|$/g, '').split('|').map(c => c.trim());
+      const aligns = sep.split('|').map(s => { s = s.trim(); return (s.startsWith(':') && s.endsWith(':')) ? 'center' : s.endsWith(':') ? 'right' : s.startsWith(':') ? 'left' : ''; });
+      const wrap = (c, i, tag) => '<' + tag + (aligns[i] ? ' style="text-align:' + aligns[i] + '"' : '') + '>' + c + '</' + tag + '>';
+      const th = cells(header).map((c, i) => wrap(c, i, 'th')).join('');
+      const rows = body.trim().split('\\n').map(r => '<tr>' + cells(r).map((c, i) => wrap(c, i, 'td')).join('') + '</tr>').join('');
+      return '<table><thead><tr>' + th + '</tr></thead><tbody>' + rows + '</tbody></table>';
+    });
     html = html.replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>');
     html = html.replace(/\\*(.+?)\\*/g, '<em>$1</em>');
+    html = html.replace(/~~(.+?)~~/g, '<del>$1</del>');
     html = html.replace(/^---+$/gm, '<hr>');
-    html = html.replace(/^[\\s]*[-*]\\s+(.+)$/gm, '<li>$1</li>');
-    html = html.replace(/(<li>.*<\\/li>)/gs, '<ul>$1</ul>');
-    html = html.replace(/<\\/ul>\\s*<ul>/g, '');
-    html = html.replace(/^[\\s]*\\d+\\.\\s+(.+)$/gm, '<li>$1</li>');
+    // Task list items (must come before regular unordered list)
+    html = html.replace(/^[\\s]*[-*]\\s+\\[([ xX])\\]\\s+(.+)$/gm, (_, m, t) => '<liu class="task"><input type="checkbox"' + (/[xX]/.test(m) ? ' checked' : '') + ' disabled> ' + t + '</liu>');
+    html = html.replace(/^[\\s]*[-*]\\s+(.+)$/gm, '<liu>$1</liu>');
+    html = html.replace(/^[\\s]*\\d+\\.\\s+(.+)$/gm, '<lio>$1</lio>');
+    html = html.replace(/(<liu(?:\\s[^>]*)?>[\\s\\S]*?<\\/liu>(?:\\s*<liu(?:\\s[^>]*)?>[\\s\\S]*?<\\/liu>)*)/g, m => '<ul>' + m.replace(/<liu/g, '<li').replace(/<\\/liu>/g, '</li>') + '</ul>');
+    html = html.replace(/(<lio>[\\s\\S]*?<\\/lio>(?:\\s*<lio>[\\s\\S]*?<\\/lio>)*)/g, m => '<ol>' + m.replace(/<lio>/g, '<li>').replace(/<\\/lio>/g, '</li>') + '</ol>');
     html = html.replace(/^&gt;\\s*(.+)$/gm, '<blockquote>$1</blockquote>');
     html = html.replace(/<\\/blockquote>\\n<blockquote>/g, '<br>');
     html = html.replace(/\\[([^\\]]+)\\]\\(([^)]+)\\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
-    html = html.replace(/^(?!<[hupbol]|<li|<blockquote|<pre|<hr)(.+)$/gm, '<p>$1</p>');
+    // Autolink bare URLs (avoid double-linking inside existing <a href="...">…</a>)
+    html = html.replace(/(^|[^"=>])(https?:\\/\\/[^\\s<]+)/g, '$1<a href="$2" target="_blank" rel="noopener">$2</a>');
+    html = html.replace(/^(?!<[hupbolt]|<li|<blockquote|<pre|<hr)(.+)$/gm, '<p>$1</p>');
     html = html.replace(/<p><\\/p>/g, '');
     return html;
   }
