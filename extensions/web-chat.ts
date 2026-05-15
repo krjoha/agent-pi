@@ -110,6 +110,8 @@ function startTunnel(localPort: number): Promise<{ url: string; proc: ChildProce
 // ── PIN Authentication ───────────────────────────────────────────────
 
 function generatePIN(): string {
+	const fixed = process.env.WEB_CHAT_PIN;
+	if (fixed && /^\d{6}$/.test(fixed)) return fixed;
 	return String(randomInt(100000, 999999));
 }
 
@@ -419,7 +421,7 @@ function startChatServer(
 	pin: string,
 	onShutdown: () => void,
 ): Promise<{ port: number; server: Server }> {
-	return new Promise((resolve) => {
+	return new Promise((resolve, reject) => {
 		const wsClients = bridge["clients"];
 		let clientIdCounter = 0;
 		const logoDataUri = loadLogoBase64();
@@ -646,7 +648,16 @@ function startChatServer(
 			});
 		});
 
-		server.listen(0, "0.0.0.0", () => {
+		const envPort = Number(process.env.WEB_CHAT_PORT);
+		const desiredPort = Number.isInteger(envPort) && envPort > 0 && envPort < 65536 ? envPort : 0;
+		server.once("error", (err: NodeJS.ErrnoException) => {
+			reject(new Error(
+				err.code === "EADDRINUSE"
+					? `Port ${desiredPort} is already in use (set WEB_CHAT_PORT or unset it for auto-assign)`
+					: `Failed to bind chat server: ${err.message}`,
+			));
+		});
+		server.listen(desiredPort, "0.0.0.0", () => {
 			const addr = server.address() as any;
 			resolve({ port: addr.port, server });
 		});
