@@ -2,7 +2,7 @@
 // ABOUTME: Phone acts as a thin client — messages are injected into THIS session via pi.sendUserMessage().
 // ABOUTME: Uses WebSocket for reliable streaming through cloudflared tunnels.
 
-import type { ExtensionAPI, ExtensionContext, MessageUpdateEvent, ToolExecutionStartEvent, ToolExecutionEndEvent } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, ExtensionCommandContext, MessageUpdateEvent, ToolExecutionStartEvent, ToolExecutionEndEvent } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { readFileSync, existsSync } from "node:fs";
@@ -204,7 +204,9 @@ function broadcastWS(clients: Map<number, WSClient>, event: string, data: any): 
 const TERMINAL_BUFFER_MAX = 200;
 
 class SessionBridge {
-	private piApi: ExtensionAPI;
+	// Resolves the *current* live ExtensionAPI at call time. Bridge survives
+	// across pi reloads (newSession()), so it must never cache a specific pi/ctx.
+	private getApi: () => ExtensionAPI | null;
 	private clients: Map<number, WSClient>;
 	private busy = false;
 	private history: ChatMessage[] = [];
@@ -213,8 +215,8 @@ class SessionBridge {
 	private terminalLines: string[] = [];
 	private pendingFromPhone = false;
 
-	constructor(piApi: ExtensionAPI, clients: Map<number, WSClient>) {
-		this.piApi = piApi;
+	constructor(getApi: () => ExtensionAPI | null, clients: Map<number, WSClient>) {
+		this.getApi = getApi;
 		this.clients = clients;
 	}
 
@@ -264,10 +266,18 @@ class SessionBridge {
 		this.history.push(userMsg);
 		broadcastWS(this.clients, "user_message", userMsg);
 
-		// Inject into main Pi session — this triggers a turn
-		// Use deliverAs: "followUp" so it works even when the agent is busy
+		// Inject into the current Pi session via the *live* ExtensionAPI.
+		// We resolve it on every call because newSession() invalidates any captured pi.
+		const api = this.getApi();
+		if (!api) {
+			broadcastWS(this.clients, "error_event", {
+				message: "Pi session is rotating — please try again in a moment.",
+			});
+			this.busy = false;
+			return;
+		}
 		try {
-			this.piApi.sendUserMessage(text, { deliverAs: "followUp" });
+			api.sendUserMessage(text, { deliverAs: "followUp" });
 		} catch (err: any) {
 			broadcastWS(this.clients, "error_event", {
 				message: "Failed to send message: " + (err?.message || "Unknown error"),
@@ -405,6 +415,15 @@ class SessionBridge {
 		}
 	}
 
+	reset(): void {
+		this.busy = false;
+		this.history = [];
+		this.textBuffer = [];
+		this.toolNames = [];
+		this.terminalLines = [];
+		broadcastWS(this.clients, "reset", {});
+	}
+
 	destroy(): void {
 		this.busy = false;
 		this.history = [];
@@ -420,6 +439,7 @@ function startChatServer(
 	bridge: SessionBridge,
 	pin: string,
 	onShutdown: () => void,
+	onReset: () => Promise<void>,
 ): Promise<{ port: number; server: Server }> {
 	return new Promise((resolve, reject) => {
 		const wsClients = bridge["clients"];
@@ -566,6 +586,22 @@ function startChatServer(
 				return;
 			}
 
+			// ── Reset (new conversation) ─────────────────────────
+			// Spins up a fresh Pi session (clears the agent's memory) while
+			// keeping this HTTP server, tunnel, and WebSocket clients alive.
+			if (req.method === "POST" && url.pathname === "/reset") {
+				res.writeHead(200, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({ ok: true }));
+				setTimeout(() => {
+					onReset().catch((err: any) => {
+						broadcastWS(wsClients, "error_event", {
+							message: "Reset failed: " + (err?.message || "unknown error"),
+						});
+					});
+				}, 50);
+				return;
+			}
+
 			// ── Shutdown (explicit close from client) ────────────
 			if (req.method === "POST" && url.pathname === "/shutdown") {
 				res.writeHead(200, { "Content-Type": "application/json" });
@@ -686,44 +722,120 @@ const ShowChatParams = Type.Object({
 	port: Type.Optional(Type.Number({ description: "Specific port to use (default: auto-assigned)" })),
 });
 
+// ── Shared state across factory reloads ──────────────────────────────
+//
+// Pi reloads extensions on newSession() — the factory runs again with a fresh
+// `pi` and a fresh module closure. To keep the chat HTTP server, tunnel, and
+// phone WebSockets alive across resets, we stash state on globalThis instead
+// of the (per-load) factory closure.
+
+interface ViewerSession {
+	kind: "chat";
+	title: string;
+	url: string;
+	server: Server;
+	onClose: () => void;
+}
+
+interface WebChatState {
+	server: Server | null;
+	tunnel: ChildProcess | null;
+	tunnelUrl: string | null;
+	bridge: SessionBridge | null;
+	wsClients: Map<number, WSClient>;
+	viewer: ViewerSession | null;
+	migratingSession: boolean;
+	// The live ExtensionAPI for the *current* session — updated on every factory load.
+	// Cleared while a session swap is in flight so the bridge can't send to a stale pi.
+	pi: ExtensionAPI | null;
+	// Live command-context for the current session — needed for newSession() on /reset.
+	lastCommandCtx: ExtensionCommandContext | null;
+	pin: string;
+	exitHandlersRegistered: boolean;
+}
+
+const STATE_KEY = "__piWebChatState_v1";
+
+function getState(): WebChatState {
+	const g = globalThis as any;
+	if (!g[STATE_KEY]) {
+		g[STATE_KEY] = {
+			server: null,
+			tunnel: null,
+			tunnelUrl: null,
+			bridge: null,
+			wsClients: new Map<number, WSClient>(),
+			viewer: null,
+			migratingSession: false,
+			pi: null,
+			lastCommandCtx: null,
+			pin: "",
+			exitHandlersRegistered: false,
+		} satisfies WebChatState;
+	}
+	return g[STATE_KEY] as WebChatState;
+}
+
 // ── Extension ────────────────────────────────────────────────────────
 
 export default function (pi: ExtensionAPI) {
-	let activeServer: Server | null = null;
-	let activeTunnel: ChildProcess | null = null;
-	let activeTunnelUrl: string | null = null;
-	let activeBridge: SessionBridge | null = null;
-	let activeSession: {
-		kind: "chat";
-		title: string;
-		url: string;
-		server: Server;
-		onClose: () => void;
-	} | null = null;
+	const state = getState();
+	// Always refresh the live pi reference — the previous one (from before
+	// newSession()) is now invalidated. Bridge resolves this on every send.
+	state.pi = pi;
 
-	function cleanupServer() {
-		// Kill tunnel
-		if (activeTunnel) {
-			try { activeTunnel.kill(); } catch {}
-			activeTunnel = null;
-			activeTunnelUrl = null;
+	async function performNewSessionReset(): Promise<void> {
+		if (!state.lastCommandCtx) {
+			throw new Error(
+				"Reset unavailable — start /chat from the terminal (not the show_chat tool) so a command context is captured.",
+			);
 		}
-		const server = activeServer;
-		activeServer = null;
-		if (server) {
-			try { server.close(); } catch {}
+		if (!state.bridge) {
+			throw new Error("Reset unavailable — chat session is not active.");
 		}
-		if (activeBridge) {
-			activeBridge.destroy();
-			activeBridge = null;
-		}
-		if (activeSession) {
-			clearActiveViewer(activeSession);
-			activeSession = null;
+		if (state.migratingSession) return;
+		state.migratingSession = true;
+		try {
+			await state.lastCommandCtx.newSession({
+				withSession: async (newCtx) => {
+					// The factory has already re-run with the new pi by this point;
+					// our handlers below now route events to state.bridge through the new pi.
+					// Refresh the captured context so subsequent resets target the new session.
+					state.lastCommandCtx = newCtx;
+					// Clears local history/terminal/busy and broadcasts "reset" to phones.
+					state.bridge?.reset();
+				},
+			});
+		} finally {
+			state.migratingSession = false;
 		}
 	}
 
-	let currentPIN = "";
+	function cleanupServer() {
+		// Kill tunnel
+		if (state.tunnel) {
+			try { state.tunnel.kill(); } catch {}
+			state.tunnel = null;
+			state.tunnelUrl = null;
+		}
+		const server = state.server;
+		state.server = null;
+		if (server) {
+			try { server.close(); } catch {}
+		}
+		if (state.bridge) {
+			state.bridge.destroy();
+			state.bridge = null;
+		}
+		if (state.viewer) {
+			clearActiveViewer(state.viewer);
+			state.viewer = null;
+		}
+		// pi and lastCommandCtx are intentionally left in place — they're still
+		// valid for the current Pi session; cleanupServer only tears down the
+		// chat-specific HTTP/WS/tunnel/bridge resources. (Stale refs get nulled by
+		// session_shutdown when the underlying Pi session goes away.)
+	}
 
 	interface LaunchResult {
 		localUrl: string;
@@ -735,27 +847,26 @@ export default function (pi: ExtensionAPI) {
 	async function launchChat(ctx: ExtensionContext, remote = false): Promise<LaunchResult> {
 		cleanupServer();
 
-		// Create the session bridge with shared WebSocket client map
-		const wsClients = new Map<number, WSClient>();
-		const bridge = new SessionBridge(pi, wsClients);
-		activeBridge = bridge;
+		// Bridge survives across pi reloads — it resolves the live pi on every send.
+		const bridge = new SessionBridge(() => state.pi, state.wsClients);
+		state.bridge = bridge;
 
-		currentPIN = generatePIN();
-		const { port, server } = await startChatServer(bridge, currentPIN, () => {
+		state.pin = generatePIN();
+		const { port, server } = await startChatServer(bridge, state.pin, () => {
 			// Called on auto-shutdown or explicit /shutdown
-			if (activeTunnel) {
-				try { activeTunnel.kill(); } catch {}
-				activeTunnel = null;
-				activeTunnelUrl = null;
+			if (state.tunnel) {
+				try { state.tunnel.kill(); } catch {}
+				state.tunnel = null;
+				state.tunnelUrl = null;
 			}
-			activeServer = null;
-			activeBridge = null;
-			if (activeSession) {
-				clearActiveViewer(activeSession);
-				activeSession = null;
+			state.server = null;
+			state.bridge = null;
+			if (state.viewer) {
+				clearActiveViewer(state.viewer);
+				state.viewer = null;
 			}
-		});
-		activeServer = server;
+		}, performNewSessionReset);
+		state.server = server;
 
 		const lanIP = getLanIP();
 		const localUrl = `http://127.0.0.1:${port}`;
@@ -768,80 +879,67 @@ export default function (pi: ExtensionAPI) {
 				throw new Error("cloudflared is not installed. Install it with: brew install cloudflared");
 			}
 			const tunnel = await startTunnel(port);
-			activeTunnel = tunnel.proc;
-			activeTunnelUrl = tunnel.url;
+			state.tunnel = tunnel.proc;
+			state.tunnelUrl = tunnel.url;
 			tunnelUrl = tunnel.url;
 
 			tunnel.proc.on("close", () => {
-				activeTunnel = null;
-				activeTunnelUrl = null;
+				state.tunnel = null;
+				state.tunnelUrl = null;
 			});
 		}
 
-		activeSession = {
+		state.viewer = {
 			kind: "chat",
 			title: "Web Chat",
 			url: tunnelUrl || localUrl,
 			server,
 			onClose: () => {
-				activeServer = null;
-				activeSession = null;
+				state.server = null;
+				state.viewer = null;
 			},
 		};
-		registerActiveViewer(activeSession);
-		notifyViewerOpen(ctx, activeSession);
+		registerActiveViewer(state.viewer);
+		notifyViewerOpen(ctx, state.viewer);
 
-		return { localUrl, lanUrl, pin: currentPIN, tunnelUrl };
+		return { localUrl, lanUrl, pin: state.pin, tunnelUrl };
 	}
 
 	// ── Event hooks — relay main session events to phone ─────────────
+	// Routed to state.bridge (shared across pi reloads).
 
 	pi.on("agent_start", async () => {
-		if (activeBridge) {
-			activeBridge.onAgentStart();
-		}
+		state.bridge?.onAgentStart();
 	});
 
 	pi.on("agent_end", async () => {
-		if (activeBridge) {
-			activeBridge.onAgentEnd();
-		}
+		state.bridge?.onAgentEnd();
 	});
 
 	pi.on("message_update", async (event) => {
-		if (activeBridge) {
-			activeBridge.onMessageUpdate(event);
-		}
+		state.bridge?.onMessageUpdate(event);
 	});
 
 	pi.on("message_end", async (event) => {
-		if (activeBridge) {
-			activeBridge.onMessageEnd((event as any).message);
-		}
+		state.bridge?.onMessageEnd((event as any).message);
 	});
 
 	pi.on("turn_end", async () => {
-		if (activeBridge && activeBridge.isBusy()) {
-			activeBridge.pushTerminalLine("[turn] Turn complete");
+		if (state.bridge && state.bridge.isBusy()) {
+			state.bridge.pushTerminalLine("[turn] Turn complete");
 		}
 	});
 
 	pi.on("tool_execution_start", async (event) => {
-		if (activeBridge) {
-			activeBridge.onToolStart(event);
-		}
+		state.bridge?.onToolStart(event);
 	});
 
 	pi.on("tool_execution_end", async (event) => {
-		if (activeBridge) {
-			activeBridge.onToolEnd(event);
-		}
+		state.bridge?.onToolEnd(event);
 	});
 
 	pi.on("input", async (event) => {
-		if (activeBridge) {
-			activeBridge.onInput(event.text, event.source);
-		}
+		state.bridge?.onInput(event.text, event.source);
 	});
 
 	// ── show_chat tool ───────────────────────────────────────────────
@@ -904,8 +1002,8 @@ export default function (pi: ExtensionAPI) {
 			const trimmed = args.trim().toLowerCase();
 
 			if (trimmed === "stop") {
-				if (activeServer) {
-					const hadTunnel = !!activeTunnel;
+				if (state.server) {
+					const hadTunnel = !!state.tunnel;
 					cleanupServer();
 					ctx.ui.notify(
 						hadTunnel ? "Web chat server and tunnel stopped." : "Web chat server stopped.",
@@ -919,6 +1017,24 @@ export default function (pi: ExtensionAPI) {
 
 			if (!ctx.hasUI) {
 				ctx.ui.notify("/chat requires interactive mode", "error");
+				return;
+			}
+
+			// Always refresh the captured ctx — the New button uses it to call newSession().
+			state.lastCommandCtx = ctx;
+
+			// If the server is already running (e.g. user re-ran /chat after a newSession),
+			// don't relaunch — just re-announce the existing URL/PIN.
+			if (state.server) {
+				const addr = state.server.address() as any;
+				const lanIP = getLanIP();
+				const port = addr?.port ?? 0;
+				const lanUrl = `http://${lanIP}:${port}`;
+				if (state.tunnelUrl) {
+					ctx.ui.notify(`Web Chat → ${state.tunnelUrl} PIN: ${state.pin}`, "success");
+				} else {
+					ctx.ui.notify(`Web Chat → ${lanUrl} PIN: ${state.pin}`, "success");
+				}
 				return;
 			}
 
@@ -949,12 +1065,23 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("session_shutdown", async () => {
+		// The old pi/ctx are about to be invalidated. Null them out so stale refs
+		// can't be reused; the next factory invocation refreshes state.pi.
+		state.pi = null;
+		state.lastCommandCtx = null;
+		// During a /reset-driven newSession() we want to keep the HTTP server,
+		// tunnel, and WebSocket clients alive — only the underlying Pi session is rotating.
+		// The new factory invocation will rewire event handlers to state.bridge.
+		if (state.migratingSession) return;
 		cleanupServer();
 	});
 
-	// Kill chat server when the terminal/process exits (SIGINT, SIGTERM, etc.)
-	const exitHandler = () => { cleanupServer(); };
-	process.on("exit", exitHandler);
-	process.on("SIGINT", exitHandler);
-	process.on("SIGTERM", exitHandler);
+	// Kill chat server when the process exits. Dedupe across factory reloads.
+	if (!state.exitHandlersRegistered) {
+		const exitHandler = () => { cleanupServer(); };
+		process.on("exit", exitHandler);
+		process.on("SIGINT", exitHandler);
+		process.on("SIGTERM", exitHandler);
+		state.exitHandlersRegistered = true;
+	}
 }

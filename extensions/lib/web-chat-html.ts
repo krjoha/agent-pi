@@ -884,8 +884,8 @@ export function generateWebChatHTML(opts: { port: number; logoDataUri?: string }
   window.resetChat = async function() {
     try {
       await authedFetch('/reset', { method: 'POST' });
-      messagesEl.innerHTML = '';
-      if (welcomeEl) { messagesEl.appendChild(welcomeEl); welcomeEl.style.display = ''; }
+      // Let the WebSocket 'reset' message handle all DOM clearing.
+      // This avoids race conditions between HTTP and WebSocket handlers.
       currentStreamBubble = null; currentStreamText = ''; setBusy(false);
     } catch (err) { addSystemMessage('Error resetting: ' + err.message); }
   };
