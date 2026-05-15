@@ -1,36 +1,36 @@
 {
   "default": {
-    "provider": "sglang",
-    "model": "RedHatAI/Qwen3.6-35B-A3B-NVFP4"
+    "provider": "berget",
+    "model": "moonshotai/Kimi-K2.6"
   },
   "agents": {
     "scout": {
-      "provider": "sglang",
-      "model": "RedHatAI/Qwen3.6-35B-A3B-NVFP4"
+      "provider": "berget",
+      "model": "moonshotai/Kimi-K2.6"
     },
     "ranger": {
-      "provider": "sglang",
-      "model": "RedHatAI/Qwen3.6-35B-A3B-NVFP4"
+      "provider": "berget",
+      "model": "moonshotai/Kimi-K2.6"
     },
     "builder": {
-      "provider": "sglang",
-      "model": "RedHatAI/Qwen3.6-35B-A3B-NVFP4"
+      "provider": "berget",
+      "model": "moonshotai/Kimi-K2.6"
     },
     "reviewer": {
-      "provider": "sglang",
-      "model": "RedHatAI/Qwen3.6-35B-A3B-NVFP4"
+      "provider": "berget",
+      "model": "zai-org/GLM-4.7-FP8"
     },
     "tester": {
-      "provider": "sglang",
-      "model": "RedHatAI/Qwen3.6-35B-A3B-NVFP4"
+      "provider": "berget",
+      "model": "moonshotai/Kimi-K2.6"
     },
     "herald": {
-      "provider": "sglang",
-      "model": "RedHatAI/Qwen3.6-35B-A3B-NVFP4"
+      "provider": "berget",
+      "model": "moonshotai/Kimi-K2.6"
     },
     "rlm-subcall": {
-      "provider": "sglang",
-      "model": "RedHatAI/Qwen3.6-35B-A3B-NVFP4"
+      "provider": "berget",
+      "model": "moonshotai/Kimi-K2.6"
     },
     "warden": {
       "provider": "berget",
@@ -42,7 +42,7 @@
     },
     "paladin": {
       "provider": "berget",
-      "model": "openai/gpt-oss-120b"
+      "model": "moonshotai/Kimi-K2.6"
     },
     "red-team": {
       "provider": "berget",
