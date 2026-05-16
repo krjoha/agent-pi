@@ -18,8 +18,8 @@ interface SecuritySource {
   category: string;
   description: string;
   homepage: string;
-  fetchLatest?: (query?: string) => Promise<SecurityNewsItem[]>;
-  lookupCve?: (cveId: string) => Promise<SecurityNewsItem[]>;
+  fetchLatest?: (options?: FetchLatestOptions) => Promise<SecurityNewsItem[]>;
+  lookupCve?: (options: CveLookupOptions) => Promise<SecurityNewsItem[]>;
 }
 
 interface SecurityNewsItem {
@@ -73,34 +73,38 @@ function extractCveIds(...values: string[]): string[] {
   return [...matches];
 }
 
-async function fetchJson(url: string): Promise<any> {
-  const resp = await fetch(url, {
-    headers: {
-      "User-Agent": "pi-agent-security-news/1.0",
-      "Accept": "application/json, text/plain;q=0.9, */*;q=0.8",
-    },
-  });
-  if (!resp.ok) {
-    throw new Error(`Fetch failed (${resp.status}) for ${url}`);
-  }
-  return resp.json();
+type FetchType = "json" | "text";
+
+interface FetchOptions {
+  url: string;
+  type: FetchType;
 }
 
-async function fetchText(url: string): Promise<string> {
-  const resp = await fetch(url, {
+async function fetchResource<T extends FetchType>(options: FetchOptions): Promise<T extends "json" ? any : string> {
+  const acceptHeader = options.type === "json"
+    ? "application/json, text/plain;q=0.9, */*;q=0.8"
+    : "text/html, text/plain;q=0.9, */*;q=0.8";
+
+  const resp = await fetch(options.url, {
     headers: {
       "User-Agent": "pi-agent-security-news/1.0",
-      "Accept": "text/html, text/plain;q=0.9, */*;q=0.8",
+      "Accept": acceptHeader,
     },
   });
+
   if (!resp.ok) {
-    throw new Error(`Fetch failed (${resp.status}) for ${url}`);
+    throw new Error(`Fetch failed (${resp.status}) for ${options.url}`);
   }
-  return resp.text();
+
+  return (options.type === "json" ? resp.json() : resp.text()) as any;
 }
 
-async function fetchCisaKev(query?: string): Promise<SecurityNewsItem[]> {
-  const data = await fetchJson(CISA_KEV_URL);
+interface FetchLatestOptions {
+  query?: string;
+}
+
+async function fetchCisaKev(options: FetchLatestOptions = {}): Promise<SecurityNewsItem[]> {
+  const data = await fetchResource({ url: CISA_KEV_URL, type: "json" });
   const vulns = safeArray<any>(data?.vulnerabilities).slice(0, 50);
   return vulns
     .map((item) => {
@@ -125,76 +129,89 @@ async function fetchCisaKev(query?: string): Promise<SecurityNewsItem[]> {
         cveIds: cveId ? [cveId] : [],
       } satisfies SecurityNewsItem;
     })
-    .filter((item) => containsQuery(item, query));
+    .filter((item) => containsQuery(item, options.query));
 }
 
-async function fetchNvdLatest(query?: string): Promise<SecurityNewsItem[]> {
-  const data = await fetchJson(`${NVD_API_URL}?resultsPerPage=20`);
-  const vulns = safeArray<any>(data?.vulnerabilities);
-  return vulns.map((entry) => {
-    const cve = entry?.cve || {};
-    const cveId = normalizeText(cve.id).toUpperCase();
-    const descriptions = safeArray<any>(cve.descriptions);
-    const desc = descriptions.find((d) => d?.lang === "en")?.value || descriptions[0]?.value || "";
-    return {
-      title: `${cveId} — ${desc.slice(0, 120) || "NVD Advisory"}`,
-      summary: normalizeText(desc),
-      url: cveId ? `https://nvd.nist.gov/vuln/detail/${cveId}` : "https://nvd.nist.gov/",
-      source: "nvd" as const,
-      sourceName: "NVD",
-      category: "cve",
-      publishedAt: normalizeText(cve.published),
-      trustScore: 10,
-      tags: ["nvd", "cve", "vulnerability"],
-      cveIds: cveId ? [cveId] : [],
-    } satisfies SecurityNewsItem;
-  }).filter((item) => containsQuery(item, query));
+function extractEnglishDescription(descriptions: any[]): string {
+  return descriptions.find((d) => d?.lang === "en")?.value || descriptions[0]?.value || "";
 }
 
-async function fetchNvdByCve(cveId: string): Promise<SecurityNewsItem[]> {
-  const data = await fetchJson(`${NVD_API_URL}?cveId=${encodeURIComponent(cveId)}`);
-  const vulns = safeArray<any>(data?.vulnerabilities);
-  return vulns.map((entry) => {
-    const cve = entry?.cve || {};
-    const descriptions = safeArray<any>(cve.descriptions);
-    const desc = descriptions.find((d) => d?.lang === "en")?.value || descriptions[0]?.value || "";
-    return {
-      title: `${cveId.toUpperCase()} — ${desc.slice(0, 120) || "NVD Advisory"}`,
-      summary: normalizeText(desc),
-      url: `https://nvd.nist.gov/vuln/detail/${cveId.toUpperCase()}`,
-      source: "nvd" as const,
-      sourceName: "NVD",
-      category: "cve",
-      publishedAt: normalizeText(cve.published),
-      trustScore: 10,
-      tags: ["nvd", "cve", "vulnerability"],
-      cveIds: [cveId.toUpperCase()],
-    } satisfies SecurityNewsItem;
-  });
-}
-
-async function fetchCveById(cveId: string): Promise<SecurityNewsItem[]> {
-  const data = await fetchJson(`${CVE_API_URL}${encodeURIComponent(cveId)}`);
-  const title = normalizeText(data?.cveMetadata?.cveId || cveId.toUpperCase());
-  const descriptions = safeArray<any>(data?.containers?.cna?.descriptions);
-  const desc = descriptions.find((d) => d?.lang === "en")?.value || descriptions[0]?.value || "";
-  return [{
-    title: `${title} — ${desc.slice(0, 120) || "CVE Record"}`,
+function buildNvdItem(cve: any, cveId: string): SecurityNewsItem {
+  const descriptions = safeArray<any>(cve.descriptions);
+  const desc = extractEnglishDescription(descriptions);
+  return {
+    title: `${cveId} — ${desc.slice(0, 120) || "NVD Advisory"}`,
     summary: normalizeText(desc),
+    url: `https://nvd.nist.gov/vuln/detail/${cveId}`,
+    source: "nvd" as const,
+    sourceName: "NVD",
+    category: "cve",
+    publishedAt: normalizeText(cve.published),
+    trustScore: 10,
+    tags: ["nvd", "cve", "vulnerability"],
+    cveIds: [cveId],
+  } satisfies SecurityNewsItem;
+}
+
+interface CveLookupOptions {
+  cveId: string;
+}
+
+async function fetchNvdLatest(options: FetchLatestOptions = {}): Promise<SecurityNewsItem[]> {
+  const data = await fetchResource({ url: `${NVD_API_URL}?resultsPerPage=20`, type: "json" });
+  const vulns = safeArray<any>(data?.vulnerabilities);
+  return vulns
+    .map((entry) => buildNvdItem(entry?.cve || {}, normalizeText(entry?.cve?.id).toUpperCase()))
+    .filter((item) => containsQuery(item, options.query));
+}
+
+async function fetchNvdByCve(options: CveLookupOptions): Promise<SecurityNewsItem[]> {
+  const data = await fetchResource({ url: `${NVD_API_URL}?cveId=${encodeURIComponent(options.cveId)}`, type: "json" });
+  const vulns = safeArray<any>(data?.vulnerabilities);
+  return vulns.map((entry) => buildNvdItem(entry?.cve || {}, options.cveId.toUpperCase()));
+}
+
+function buildCveItem(cveId: string, data: any): SecurityNewsItem {
+  const cveMetadata = data?.cveMetadata || {};
+  const title = normalizeText(cveMetadata.cveId || cveId.toUpperCase());
+  const descriptions = safeArray<any>(data?.containers?.cna?.descriptions);
+  const desc = extractEnglishDescription(descriptions);
+  const summary = normalizeText(desc);
+  return {
+    title: `${title} — ${desc.slice(0, 120) || "CVE Record"}`,
+    summary,
     url: `https://www.cve.org/CVERecord?id=${title}`,
     source: "cve",
     sourceName: "CVE / MITRE",
     category: "cve-record",
-    publishedAt: normalizeText(data?.cveMetadata?.datePublished),
+    publishedAt: normalizeText(cveMetadata.datePublished),
     trustScore: 9,
     tags: ["cve", "mitre", "vulnerability"],
     cveIds: [title],
-  }];
+  };
 }
 
-async function fetchOwaspLatest(query?: string): Promise<SecurityNewsItem[]> {
-  const html = await fetchText(OWASP_NEWS_URL);
-  const text = html.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+async function fetchCveById(options: CveLookupOptions): Promise<SecurityNewsItem[]> {
+  const data = await fetchResource({ url: `${CVE_API_URL}${encodeURIComponent(options.cveId)}`, type: "json" });
+  return [buildCveItem(options.cveId, data)];
+}
+
+interface HtmlContent {
+  html: string;
+}
+
+function stripHtmlTags(content: HtmlContent): string {
+  return content.html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function fetchOwaspLatest(options: FetchLatestOptions = {}): Promise<SecurityNewsItem[]> {
+  const response = await fetchResource({ url: OWASP_NEWS_URL, type: "text" });
+  const text = stripHtmlTags({ html: response });
   const item: SecurityNewsItem = {
     title: "OWASP Top 10 Web Application Security Risks",
     summary: text.slice(0, 500),
@@ -206,7 +223,7 @@ async function fetchOwaspLatest(query?: string): Promise<SecurityNewsItem[]> {
     tags: ["owasp", "web-security", "guidance", ...extractCveIds(text)],
     cveIds: extractCveIds(text),
   };
-  return containsQuery(item, query) ? [item] : [];
+  return containsQuery(item, options.query) ? [item] : [];
 }
 
 const SOURCES: SecuritySource[] = [
@@ -269,6 +286,136 @@ function formatSource(source: SecuritySource): string {
   return `- ${source.name} (${source.id}) — Tier ${source.tier}, Trust ${source.trustScore}/10\n  ${source.description}\n  ${source.homepage}`;
 }
 
+function parseParams(params: unknown): {
+  action: SecurityNewsAction;
+  query: string | undefined;
+  sourceId: SourceId | "";
+  cveId: string;
+  limit: number;
+} {
+  const p = params as any;
+  return {
+    action: normalizeText(p.action) as SecurityNewsAction,
+    query: normalizeText(p.query) || undefined,
+    sourceId: normalizeText(p.source) as SourceId | "",
+    cveId: normalizeText(p.cve_id).toUpperCase(),
+    limit: typeof p.limit === "number" ? Math.max(1, Math.min(25, p.limit)) : 10,
+  };
+}
+
+function isValidAction(action: string): action is SecurityNewsAction {
+  return ["sources", "latest", "search", "cve_lookup"].includes(action);
+}
+
+function selectSources(sourceId: SourceId | ""): SecuritySource[] {
+  if (!sourceId) return SOURCES;
+  const filtered = SOURCES.filter((s) => s.id === sourceId);
+  return filtered;
+}
+
+function buildHeading(action: SecurityNewsAction, cveId: string, query: string | undefined): string {
+  if (action === "cve_lookup") return `Trusted advisory results for ${cveId}:`;
+  if (action === "search") return `Trusted security news results for "${query || ""}":`;
+  return "Latest trusted security advisories:";
+}
+
+async function fetchCveItems(sources: SecuritySource[], cveId: string): Promise<SecurityNewsItem[]> {
+  if (!/^CVE-\d{4}-\d{4,7}$/i.test(cveId)) {
+    throw new Error("invalid_cve_format");
+  }
+  const items: SecurityNewsItem[] = [];
+  for (const source of sources.filter((s) => s.lookupCve)) {
+    items.push(...await source.lookupCve!({ cveId }));
+  }
+  return items;
+}
+
+async function fetchLatestItems(sources: SecuritySource[], query: string | undefined): Promise<SecurityNewsItem[]> {
+  const items: SecurityNewsItem[] = [];
+  for (const source of sources.filter((s) => s.fetchLatest)) {
+    items.push(...await source.fetchLatest!({ query }));
+  }
+  return items;
+}
+
+function processItems(items: SecurityNewsItem[], action: SecurityNewsAction, query: string | undefined, limit: number): SecurityNewsItem[] {
+  return dedupeItems(items)
+    .filter((item) => action !== "search" || containsQuery(item, query))
+    .sort((a, b) => b.trustScore - a.trustScore)
+    .slice(0, limit);
+}
+
+function buildSourcesResult(): { content: any[]; details: any } {
+  const text = ["Trusted security news/advisory sources:", "", ...SOURCES.map(formatSource)].join("\n");
+  return { content: [{ type: "text" as const, text }], details: { action: "sources", count: SOURCES.length } };
+}
+
+function buildItemsResult(items: SecurityNewsItem[], action: SecurityNewsAction, cveId: string, query: string | undefined): { content: any[]; details: any } {
+  if (items.length === 0) {
+    return {
+      content: [{ type: "text" as const, text: "No trusted security news results matched the request." }],
+      details: { action, count: 0 },
+    };
+  }
+
+  const heading = buildHeading(action, cveId, query);
+  const text = [heading, "", ...items.map(formatItem)].join("\n\n");
+  return {
+    content: [{ type: "text" as const, text }],
+    details: { action, count: items.length, items },
+  };
+}
+
+function buildErrorResult(action: string, error: string): { content: any[]; details: any } {
+  return {
+    content: [{ type: "text" as const, text: `security_news failed: ${error}` }],
+    details: { action, error },
+  };
+}
+
+async function handleSecurityNews(params: unknown): Promise<{ content: any[]; details: any }> {
+  const { action, query, sourceId, cveId, limit } = parseParams(params);
+
+  if (!isValidAction(action)) {
+    return { content: [{ type: "text" as const, text: `Unknown action: ${action}` }], details: { error: "invalid_action" } };
+  }
+
+  if (action === "sources") {
+    return buildSourcesResult();
+  }
+
+  const selectedSources = selectSources(sourceId);
+  if (sourceId && selectedSources.length === 0) {
+    return { content: [{ type: "text" as const, text: `Unknown source: ${sourceId}` }], details: { error: "invalid_source" } };
+  }
+
+  try {
+    const rawItems = action === "cve_lookup"
+      ? await fetchCveItems(selectedSources, cveId)
+      : await fetchLatestItems(selectedSources, query);
+
+    const items = processItems(rawItems, action, query, limit);
+    return buildItemsResult(items, action, cveId, query);
+  } catch (error: any) {
+    if (error.message === "invalid_cve_format") {
+      return { content: [{ type: "text" as const, text: "cve_lookup requires a valid CVE ID like CVE-2024-12345." }], details: { error: "invalid_cve" } };
+    }
+    return buildErrorResult(action, error.message);
+  }
+}
+
+function renderSecurityNewsCall(args: unknown, theme: any): Text {
+  const p = args as any;
+  const label = `${p.action || "security_news"}${p.source ? `:${p.source}` : ""}`;
+  return new Text(theme.fg("toolTitle", theme.bold("security_news ")) + theme.fg("accent", label), 0, 0);
+}
+
+function renderSecurityNewsResult(result: any, theme: any): Text {
+  const details = result.details as any;
+  if (details?.error) return new Text(theme.fg("error", `security_news error: ${details.error}`), 0, 0);
+  return new Text(theme.fg("success", `security_news ${details?.count ?? 0} result(s)`), 0, 0);
+}
+
 export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "security_news",
@@ -282,80 +429,13 @@ export default function (pi: ExtensionAPI) {
       limit: Type.Optional(Type.Number({ description: "Maximum number of results to return (default 10)" })),
     }),
     async execute(_toolCallId, params) {
-      const action = normalizeText((params as any).action) as SecurityNewsAction;
-      const query = normalizeText((params as any).query) || undefined;
-      const sourceId = normalizeText((params as any).source) as SourceId | "";
-      const cveId = normalizeText((params as any).cve_id).toUpperCase();
-      const limit = typeof (params as any).limit === "number" ? Math.max(1, Math.min(25, (params as any).limit)) : 10;
-
-      if (!["sources", "latest", "search", "cve_lookup"].includes(action)) {
-        return { content: [{ type: "text" as const, text: `Unknown action: ${action}` }], details: { error: "invalid_action" } };
-      }
-
-      if (action === "sources") {
-        const text = ["Trusted security news/advisory sources:", "", ...SOURCES.map(formatSource)].join("\n");
-        return { content: [{ type: "text" as const, text }], details: { action, count: SOURCES.length } };
-      }
-
-      const selectedSources = sourceId ? SOURCES.filter((s) => s.id === sourceId) : SOURCES;
-      if (sourceId && selectedSources.length === 0) {
-        return { content: [{ type: "text" as const, text: `Unknown source: ${sourceId}` }], details: { error: "invalid_source" } };
-      }
-
-      try {
-        let items: SecurityNewsItem[] = [];
-        if (action === "cve_lookup") {
-          if (!/^CVE-\d{4}-\d{4,7}$/i.test(cveId)) {
-            return { content: [{ type: "text" as const, text: "cve_lookup requires a valid CVE ID like CVE-2024-12345." }], details: { error: "invalid_cve" } };
-          }
-          for (const source of selectedSources.filter((s) => s.lookupCve)) {
-            items.push(...await source.lookupCve!(cveId));
-          }
-        } else {
-          for (const source of selectedSources.filter((s) => s.fetchLatest)) {
-            items.push(...await source.fetchLatest!(query));
-          }
-        }
-
-        items = dedupeItems(items)
-          .filter((item) => action !== "search" || containsQuery(item, query))
-          .sort((a, b) => b.trustScore - a.trustScore)
-          .slice(0, limit);
-
-        if (items.length === 0) {
-          return {
-            content: [{ type: "text" as const, text: "No trusted security news results matched the request." }],
-            details: { action, count: 0 },
-          };
-        }
-
-        const heading = action === "cve_lookup"
-          ? `Trusted advisory results for ${cveId}:`
-          : action === "search"
-            ? `Trusted security news results for \"${query || ""}\":`
-            : "Latest trusted security advisories:";
-
-        const text = [heading, "", ...items.map(formatItem)].join("\n\n");
-        return {
-          content: [{ type: "text" as const, text }],
-          details: { action, count: items.length, items },
-        };
-      } catch (error: any) {
-        return {
-          content: [{ type: "text" as const, text: `security_news failed: ${error.message}` }],
-          details: { action, error: error.message },
-        };
-      }
+      return handleSecurityNews(params);
     },
     renderCall(args, theme) {
-      const p = args as any;
-      const label = `${p.action || "security_news"}${p.source ? `:${p.source}` : ""}`;
-      return new Text(theme.fg("toolTitle", theme.bold("security_news ")) + theme.fg("accent", label), 0, 0);
+      return renderSecurityNewsCall(args, theme);
     },
     renderResult(result, _options, theme) {
-      const details = result.details as any;
-      if (details?.error) return new Text(theme.fg("error", `security_news error: ${details.error}`), 0, 0);
-      return new Text(theme.fg("success", `security_news ${details?.count ?? 0} result(s)`), 0, 0);
+      return renderSecurityNewsResult(result, theme);
     },
   });
 }

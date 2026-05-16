@@ -7,9 +7,16 @@ import { Text } from "@earendil-works/pi-tui";
 import os from "node:os";
 import { execFile } from "node:child_process";
 
-function execFileAsync(command: string, args: string[], timeout = 10000): Promise<{ stdout: string; stderr: string }> {
+interface ExecOptions {
+  command: string;
+  args: string[];
+  timeout?: number;
+}
+
+function execFileAsync(options: ExecOptions): Promise<{ stdout: string; stderr: string }> {
+  const timeout = options.timeout ?? 10000;
   return new Promise((resolve, reject) => {
-    execFile(command, args, { timeout, encoding: "utf-8", maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
+    execFile(options.command, options.args, { timeout, encoding: "utf-8", maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
       if (error) {
         reject(new Error(stderr?.trim() || error.message));
         return;
@@ -33,30 +40,147 @@ function localInterfaces() {
   }));
 }
 
-function isSafeInterface(name: string): boolean {
-  return /^[a-zA-Z0-9_.:-]+$/.test(name);
+interface InterfaceName {
+  value: string;
+}
+
+function createInterfaceName(value: string): InterfaceName {
+  return { value };
+}
+
+function isSafeInterface(name: InterfaceName): boolean {
+  return /^[a-zA-Z0-9_.:-]+$/.test(name.value);
+}
+
+interface Action {
+  value: string;
 }
 
 function normalizeAction(value: unknown): string {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
 }
 
+interface InspectParams {
+  action: string;
+  iface: string;
+  seconds: number;
+  packetCount: number;
+}
+
+interface CaptureConfig {
+  iface: string;
+  seconds: number;
+  packetCount: number;
+}
+
+function parseParams(params: unknown): InspectParams {
+  const p = params as any;
+  return {
+    action: normalizeAction(p.action),
+    iface: typeof p.interface === "string" ? p.interface.trim() : "",
+    seconds: Math.max(1, Math.min(10, Number(p.seconds) || 3)),
+    packetCount: Math.max(1, Math.min(50, Number(p.packet_count) || 10)),
+  };
+}
+
 async function listListeners(): Promise<string> {
   try {
-    const result = await execFileAsync("lsof", ["-nP", "-iTCP", "-sTCP:LISTEN"], 10000);
+    const result = await execFileAsync({ command: "lsof", args: ["-nP", "-iTCP", "-sTCP:LISTEN"], timeout: 10000 });
     return result.stdout.trim();
   } catch {
-    const result = await execFileAsync("netstat", ["-an"], 10000);
+    const result = await execFileAsync({ command: "netstat", args: ["-an"], timeout: 10000 });
     return result.stdout.trim();
   }
 }
 
-async function captureSummary(iface: string, seconds: number, packetCount: number): Promise<string> {
-  if (!isSafeInterface(iface)) throw new Error("Invalid interface name.");
-  const args = ["-i", iface, "-nn", "-p", "-q", "-c", String(packetCount)];
-  const timeoutMs = Math.max(1000, seconds * 1000);
-  const result = await execFileAsync("tcpdump", args, timeoutMs);
+async function captureSummary(config: CaptureConfig): Promise<string> {
+  if (!isSafeInterface(createInterfaceName(config.iface))) throw new Error("Invalid interface name.");
+  const args = ["-i", config.iface, "-nn", "-p", "-q", "-c", String(config.packetCount)];
+  const timeoutMs = Math.max(1000, config.seconds * 1000);
+  const result = await execFileAsync({ command: "tcpdump", args, timeout: timeoutMs });
   return result.stdout.trim() || result.stderr.trim();
+}
+
+function formatInterfaceText(items: ReturnType<typeof localInterfaces>): string {
+  return [
+    "Local interfaces:",
+    "",
+    ...items.map((item) => `- ${item.name}\n${item.addresses.map((a) => `  ${a.family} ${a.address}${a.internal ? " (internal)" : ""}${a.cidr ? ` ${a.cidr}` : ""}`).join("\n")}`),
+  ].join("\n");
+}
+
+function buildInterfacesResult() {
+  const items = localInterfaces();
+  return {
+    content: [{ type: "text" as const, text: formatInterfaceText(items) }],
+    details: { action: "interfaces", count: items.length, items },
+  };
+}
+
+async function buildListenersResult() {
+  const output = await listListeners();
+  return {
+    content: [{ type: "text" as const, text: `Local listening sockets:\n\n${output || "No listeners found."}` }],
+    details: { action: "listeners", output },
+  };
+}
+
+function buildMissingInterfaceError() {
+  return {
+    content: [{ type: "text" as const, text: "capture_summary requires an interface name. Use the interfaces action first and prefer loopback or an explicitly authorized local interface." }],
+    details: { error: "missing_interface" },
+  };
+}
+
+async function buildCaptureResult(config: CaptureConfig) {
+  const output = await captureSummary(config);
+  return {
+    content: [{ type: "text" as const, text: `Passive capture summary (${config.iface}, up to ${config.packetCount} packets):\n\n${output || "No packets captured within the bounded window."}` }],
+    details: { action: "capture_summary", interface: config.iface, seconds: config.seconds, packetCount: config.packetCount, output },
+  };
+}
+
+function buildInvalidActionError(action: Action) {
+  return {
+    content: [{ type: "text" as const, text: `Unknown action: ${action.value}. Use interfaces, listeners, or capture_summary.` }],
+    details: { error: "invalid_action" },
+  };
+}
+
+function buildErrorResult(action: Action, error: Error) {
+  return {
+    content: [{ type: "text" as const, text: `network_inspect failed: ${error.message}` }],
+    details: { action: action.value, error: error.message },
+  };
+}
+
+function toCaptureConfig(params: InspectParams): CaptureConfig {
+  return {
+    iface: params.iface,
+    seconds: params.seconds,
+    packetCount: params.packetCount,
+  };
+}
+
+function toAction(value: string): Action {
+  return { value };
+}
+
+async function handleNetworkInspect(params: unknown) {
+  const parsed = parseParams(params);
+  const action = toAction(parsed.action);
+
+  try {
+    if (parsed.action === "interfaces") return buildInterfacesResult();
+    if (parsed.action === "listeners") return buildListenersResult();
+    if (parsed.action === "capture_summary") {
+      if (!parsed.iface) return buildMissingInterfaceError();
+      return buildCaptureResult(toCaptureConfig(parsed));
+    }
+    return buildInvalidActionError(action);
+  } catch (error: any) {
+    return buildErrorResult(action, error);
+  }
 }
 
 export default function (pi: ExtensionAPI) {
@@ -71,54 +195,7 @@ export default function (pi: ExtensionAPI) {
       packet_count: Type.Optional(Type.Number({ description: "Maximum packets to summarize (default 10, max 50)." })),
     }),
     async execute(_toolCallId, params) {
-      const action = normalizeAction((params as any).action);
-      const iface = typeof (params as any).interface === "string" ? (params as any).interface.trim() : "";
-      const seconds = Math.max(1, Math.min(10, Number((params as any).seconds) || 3));
-      const packetCount = Math.max(1, Math.min(50, Number((params as any).packet_count) || 10));
-
-      try {
-        if (action === "interfaces") {
-          const items = localInterfaces();
-          const text = [
-            "Local interfaces:",
-            "",
-            ...items.map((item) => `- ${item.name}\n${item.addresses.map((a) => `  ${a.family} ${a.address}${a.internal ? " (internal)" : ""}${a.cidr ? ` ${a.cidr}` : ""}`).join("\n")}`),
-          ].join("\n");
-          return { content: [{ type: "text" as const, text }], details: { action, count: items.length, items } };
-        }
-
-        if (action === "listeners") {
-          const output = await listListeners();
-          return {
-            content: [{ type: "text" as const, text: `Local listening sockets:\n\n${output || "No listeners found."}` }],
-            details: { action, output },
-          };
-        }
-
-        if (action === "capture_summary") {
-          if (!iface) {
-            return {
-              content: [{ type: "text" as const, text: "capture_summary requires an interface name. Use the interfaces action first and prefer loopback or an explicitly authorized local interface." }],
-              details: { error: "missing_interface" },
-            };
-          }
-          const output = await captureSummary(iface, seconds, packetCount);
-          return {
-            content: [{ type: "text" as const, text: `Passive capture summary (${iface}, up to ${packetCount} packets):\n\n${output || "No packets captured within the bounded window."}` }],
-            details: { action, interface: iface, seconds, packetCount, output },
-          };
-        }
-
-        return {
-          content: [{ type: "text" as const, text: `Unknown action: ${action}. Use interfaces, listeners, or capture_summary.` }],
-          details: { error: "invalid_action" },
-        };
-      } catch (error: any) {
-        return {
-          content: [{ type: "text" as const, text: `network_inspect failed: ${error.message}` }],
-          details: { action, error: error.message },
-        };
-      }
+      return handleNetworkInspect(params);
     },
     renderCall(args, theme) {
       const p = args as any;
