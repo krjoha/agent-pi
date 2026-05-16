@@ -31,6 +31,7 @@ import { preClaimTask, postCompleteTask, postFailTask } from "./lib/commander-li
 import { parseGroupCreateResult, buildGroupCreatePayload } from "./lib/commander-sync.ts";
 import { scanAgentDefs, scanToolkitAgentDefs, resolveAgentByName, loadAgentModelsConfig, loadToolkitModelsConfig, resolveAgentModelString, type AgentDef, type AgentModelsConfig } from "./lib/agent-defs.ts";
 import { resolveToolkitWorkerModel, isToolkitCliAgent, spawnToolkitWorker } from "./lib/toolkit-cli.ts";
+import { resolveProviderExtensions } from "./lib/provider-extensions.ts";
 
 // ── Commander availability ───────────────────────────────────────────────────
 
@@ -241,6 +242,13 @@ export default function (pi: ExtensionAPI) {
 			// go in --tools (which only accepts built-in names and warns on unknowns).
 			// Loading the extension is sufficient — pi auto-activates all extension tools.
 			extensions.push("-e", commanderExtPath);
+		}
+
+		// Subagents spawn with --no-extensions, which also drops provider extensions
+		// (Berget npm package, local SGLang). Re-add them so --model berget/... and
+		// --model sglang/... resolve in the child process.
+		for (const providerPath of resolveProviderExtensions()) {
+			extensions.push("-e", providerPath);
 		}
 
 		// Build system prompt: agent definition prompt + Commander discipline

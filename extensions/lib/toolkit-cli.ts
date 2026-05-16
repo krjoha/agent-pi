@@ -4,6 +4,7 @@
 import { spawn } from "child_process";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
+import { resolveProviderExtensions } from "./provider-extensions.ts";
 
 export const TOOLKIT_CLI_AGENTS = new Set([
 	"cursor-agent",
@@ -67,11 +68,16 @@ export function getToolkitWorkerArgs(agentDef: ToolkitWorkerAgentDef, options: T
 		"-e", tasksExtPath,
 		"-e", footerExtPath,
 		"-e", memoryCycleExtPath,
+	];
+	for (const providerPath of resolveProviderExtensions()) {
+		args.push("-e", providerPath);
+	}
+	args.push(
 		"--model", TOOLKIT_WORKER_MODEL,
 		"--tools", agentDef.tools,
 		"--thinking", "off",
 		"--append-system-prompt", agentDef.systemPrompt,
-	];
+	);
 
 	if (options.sessionFile) {
 		args.push("--session", options.sessionFile);
