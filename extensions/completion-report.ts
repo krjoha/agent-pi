@@ -17,6 +17,13 @@ import { createCompletionReportStandaloneExport, saveStandaloneExport } from "./
 import { upsertPersistedReport } from "./lib/report-index.ts";
 import { registerActiveViewer, clearActiveViewer, notifyViewerOpen } from "./lib/viewer-session.ts";
 
+// ── Type Aliases ────────────────────────────────────────────────────
+
+type GitRef = string;
+type FilePath = string;
+type DiffContent = string;
+type CwdPath = string;
+
 // ── Types ────────────────────────────────────────────────────────────
 
 interface ReportResult {
@@ -26,7 +33,7 @@ interface ReportResult {
 
 // ── Git Helpers ──────────────────────────────────────────────────────
 
-function execGit(cmd: string, cwd: string): string {
+function execGit(cmd: string, cwd: CwdPath): string {
 	try {
 		return execSync(cmd, { cwd, encoding: "utf-8", maxBuffer: 10 * 1024 * 1024 }).trim();
 	} catch {
@@ -34,7 +41,7 @@ function execGit(cmd: string, cwd: string): string {
 	}
 }
 
-function isGitRepo(cwd: string): boolean {
+function isGitRepo(cwd: CwdPath): boolean {
 	return execGit("git rev-parse --is-inside-work-tree", cwd) === "true";
 }
 
@@ -45,7 +52,7 @@ function isGitRepo(cwd: string): boolean {
  * 2. If there are staged/unstaged changes, diff against HEAD
  * 3. HEAD~1 (last commit)
  */
-function resolveBaseRef(cwd: string, explicitRef?: string): string {
+function resolveBaseRef(cwd: CwdPath, explicitRef?: GitRef): GitRef {
 	if (explicitRef) return explicitRef;
 
 	// Check if there are uncommitted changes (staged or unstaged)
@@ -61,7 +68,7 @@ function resolveBaseRef(cwd: string, explicitRef?: string): string {
 /**
  * Parse `git diff --numstat` output into file stats.
  */
-function parseNumstat(output: string): Array<{ path: string; additions: number; deletions: number }> {
+function parseNumstat(output: string): Array<{ path: FilePath; additions: number; deletions: number }> {
 	if (!output.trim()) return [];
 	return output.split("\n").filter(Boolean).map((line) => {
 		const [add, del, ...pathParts] = line.split("\t");
@@ -75,86 +82,38 @@ function parseNumstat(output: string): Array<{ path: string; additions: number; 
 }
 
 /**
- * Detect file status (added, modified, deleted, renamed).
+ * Parse a git name-status line into { status, path, oldPath? }.
  */
-function getFileStatuses(cwd: string, baseRef: string): Map<string, { status: ChangedFile["status"]; oldPath?: string }> {
-	const statusMap = new Map<string, { status: ChangedFile["status"]; oldPath?: string }>();
+function parseNameStatusLine(line: string): { status: ChangedFile["status"]; path: string; oldPath?: string } | null {
+	const [rawStatus, ...parts] = line.split("\t");
+	const status = rawStatus.toUpperCase();
+	const filePath = parts[parts.length - 1];
 
-	// For uncommitted changes
-	if (baseRef === "HEAD") {
-		// Unstaged changes
-		const unstaged = execGit("git diff --name-status", cwd);
-		for (const line of unstaged.split("\n").filter(Boolean)) {
-			const [status, ...parts] = line.split("\t");
-			const filePath = parts[parts.length - 1];
-			if (status.startsWith("R")) {
-				statusMap.set(filePath, { status: "renamed", oldPath: parts[0] });
-			} else if (status === "A") {
-				statusMap.set(filePath, { status: "added" });
-			} else if (status === "D") {
-				statusMap.set(filePath, { status: "deleted" });
-			} else {
-				statusMap.set(filePath, { status: "modified" });
-			}
-		}
-
-		// Staged changes
-		const staged = execGit("git diff --cached --name-status", cwd);
-		for (const line of staged.split("\n").filter(Boolean)) {
-			const [status, ...parts] = line.split("\t");
-			const filePath = parts[parts.length - 1];
-			if (!statusMap.has(filePath)) {
-				if (status.startsWith("R")) {
-					statusMap.set(filePath, { status: "renamed", oldPath: parts[0] });
-				} else if (status === "A") {
-					statusMap.set(filePath, { status: "added" });
-				} else if (status === "D") {
-					statusMap.set(filePath, { status: "deleted" });
-				} else {
-					statusMap.set(filePath, { status: "modified" });
-				}
-			}
-		}
-
-		// Untracked files
-		const untracked = execGit("git ls-files --others --exclude-standard", cwd);
-		for (const filePath of untracked.split("\n").filter(Boolean)) {
-			if (!statusMap.has(filePath)) {
-				statusMap.set(filePath, { status: "added" });
-			}
-		}
-	} else {
-		// Committed changes
-		const output = execGit(`git diff --name-status ${baseRef}`, cwd);
-		for (const line of output.split("\n").filter(Boolean)) {
-			const [status, ...parts] = line.split("\t");
-			const filePath = parts[parts.length - 1];
-			if (status.startsWith("R")) {
-				statusMap.set(filePath, { status: "renamed", oldPath: parts[0] });
-			} else if (status === "A") {
-				statusMap.set(filePath, { status: "added" });
-			} else if (status === "D") {
-				statusMap.set(filePath, { status: "deleted" });
-			} else {
-				statusMap.set(filePath, { status: "modified" });
-			}
-		}
+	if (status.startsWith("R")) {
+		return { status: "renamed", path: filePath, oldPath: parts[0] };
 	}
-
-	return statusMap;
+	if (status === "A") return { status: "added", path: filePath };
+	if (status === "D") return { status: "deleted", path: filePath };
+	if (status === "M") return { status: "modified", path: filePath };
+	return { status: "modified", path: filePath };
 }
 
-/**
- * Gather all data needed for the completion report.
- */
-function shouldSuppressReportFile(filePath: string): boolean {
+function parseGitNameStatus(output: string): Array<{ status: ChangedFile["status"]; path: string; oldPath?: string }> {
+	if (!output.trim()) return [];
+	return output.split("\n")
+		.filter(Boolean)
+		.map(parseNameStatusLine)
+		.filter((r): r is NonNullable<typeof r> => r !== null);
+}
+
+function shouldSuppressReportFile(filePath: FilePath): boolean {
 	const normalized = filePath.replace(/\\/g, "/");
 	return normalized.startsWith(".context/test-exports/") ||
 		normalized.startsWith(".context/reports/") ||
 		normalized === "agent/extensions/lib/marked.min.js";
 }
 
-function summarizeSuppressedFile(filePath: string): string {
+function summarizeSuppressedFile(filePath: FilePath): DiffContent {
 	return [
 		"@@ -0,0 +1,1 @@",
 		`+Diff preview suppressed for generated or bulky artifact: ${filePath}`,
@@ -162,39 +121,54 @@ function summarizeSuppressedFile(filePath: string): string {
 	].join("\n");
 }
 
-function gatherReportData(cwd: string, title: string, summary: string, baseRef: string): ReportData {
-	const resolvedRef = resolveBaseRef(cwd, baseRef);
-
-	// Get diff stats
-	let numstatOutput: string;
-	if (resolvedRef === "HEAD") {
-		// Combine staged + unstaged + untracked
-		const unstaged = execGit("git diff --numstat", cwd);
-		const staged = execGit("git diff --cached --numstat", cwd);
-		numstatOutput = [unstaged, staged].filter(Boolean).join("\n");
-	} else {
-		numstatOutput = execGit(`git diff --numstat ${resolvedRef}`, cwd);
+function collectUncommittedStatus(cwd: CwdPath): Array<{ status: ChangedFile["status"]; path: FilePath; oldPath?: FilePath }> {
+	const entries: Array<{ status: ChangedFile["status"]; path: string; oldPath?: string }> = [];
+	entries.push(...parseGitNameStatus(execGit("git diff --name-status", cwd)));
+	entries.push(...parseGitNameStatus(execGit("git diff --cached --name-status", cwd)));
+	for (const filePath of execGit("git ls-files --others --exclude-standard", cwd).split("\n").filter(Boolean)) {
+		entries.push({ status: "added", path: filePath });
 	}
+	return entries;
+}
 
-	const stats = parseNumstat(numstatOutput);
-	const statuses = getFileStatuses(cwd, resolvedRef);
+function collectCommittedStatus(cwd: CwdPath, baseRef: GitRef): Array<{ status: ChangedFile["status"]; path: FilePath; oldPath?: FilePath }> {
+	return parseGitNameStatus(execGit(`git diff --name-status ${baseRef}`, cwd));
+}
 
-	// Get per-file diffs
+/**
+ * Detect file status (added, modified, deleted, renamed).
+ */
+function getFileStatuses(cwd: CwdPath, baseRef: GitRef): Map<FilePath, { status: ChangedFile["status"]; oldPath?: FilePath }> {
+	const entries = baseRef === "HEAD" ? collectUncommittedStatus(cwd) : collectCommittedStatus(cwd, baseRef);
+	const statusMap = new Map<string, { status: ChangedFile["status"]; oldPath?: string }>();
+	for (const entry of entries) {
+		if (!statusMap.has(entry.path)) {
+			statusMap.set(entry.path, { status: entry.status, oldPath: entry.oldPath });
+		}
+	}
+	return statusMap;
+}
+
+/**
+ * Gather per-file diff data for the report.
+ */
+function collectFileDiffs(
+	cwd: CwdPath,
+	resolvedRef: GitRef,
+	statuses: Map<FilePath, { status: ChangedFile["status"]; oldPath?: FilePath }>,
+): ChangedFile[] {
+	const stats = parseNumstat(
+		resolvedRef === "HEAD"
+			? [execGit("git diff --numstat", cwd), execGit("git diff --cached --numstat", cwd)].filter(Boolean).join("\n")
+			: execGit(`git diff --numstat ${resolvedRef}`, cwd),
+	);
+
 	const files: ChangedFile[] = [];
-
 	for (const stat of stats) {
 		const statusInfo = statuses.get(stat.path) || { status: "modified" as const };
-		let diff: string;
-
-		if (resolvedRef === "HEAD") {
-			// Try unstaged first, then staged
-			diff = execGit(`git diff -- "${stat.path}"`, cwd);
-			if (!diff) {
-				diff = execGit(`git diff --cached -- "${stat.path}"`, cwd);
-			}
-		} else {
-			diff = execGit(`git diff ${resolvedRef} -- "${stat.path}"`, cwd);
-		}
+		const diff = resolvedRef === "HEAD"
+			? (execGit(`git diff -- "${stat.path}"`, cwd) || execGit(`git diff --cached -- "${stat.path}"`, cwd))
+			: execGit(`git diff ${resolvedRef} -- "${stat.path}"`, cwd);
 
 		files.push({
 			path: stat.path,
@@ -205,58 +179,61 @@ function gatherReportData(cwd: string, title: string, summary: string, baseRef: 
 			oldPath: statusInfo.oldPath,
 		});
 	}
+	return files;
+}
 
-	// Also add untracked files if diffing against HEAD
+function collectUntrackedFiles(cwd: CwdPath): ChangedFile[] {
+	const untracked = execGit("git ls-files --others --exclude-standard", cwd);
+	const files: ChangedFile[] = [];
+	for (const filePath of untracked.split("\n").filter(Boolean)) {
+		if (shouldSuppressReportFile(filePath)) {
+			files.push({ path: filePath, status: "added", additions: 1, deletions: 0, diff: summarizeSuppressedFile(filePath) });
+			continue;
+		}
+		let content = "";
+		try { content = readFileSync(join(cwd, filePath), "utf-8"); } catch { content = "(binary or unreadable)"; }
+		const lines = content.split("\n");
+		const diff = lines.map((l) => `+${l}`).join("\n");
+		files.push({ path: filePath, status: "added", additions: lines.length, deletions: 0, diff: `@@ -0,0 +1,${lines.length} @@\n${diff}` });
+	}
+	return files;
+}
+
+function readTaskMarkdown(cwd: CwdPath): string | undefined {
+	const todoPath = join(cwd, ".context", "todo.md");
+	if (!existsSync(todoPath)) return undefined;
+	try { return readFileSync(todoPath, "utf-8"); } catch { return undefined; }
+}
+
+interface ReportOptions {
+	cwd: CwdPath;
+	title: string;
+	summary: string;
+	baseRef: GitRef;
+}
+
+/**
+ * Gather all data needed for the completion report.
+ */
+function gatherReportData(opts: ReportOptions): ReportData {
+	const { cwd, title, summary, baseRef } = opts;
+	const resolvedRef = resolveBaseRef(cwd, baseRef);
+	const statuses = getFileStatuses(cwd, resolvedRef);
+
+	const files = collectFileDiffs(cwd, resolvedRef, statuses);
+
 	if (resolvedRef === "HEAD") {
-		const untracked = execGit("git ls-files --others --exclude-standard", cwd);
-		for (const filePath of untracked.split("\n").filter(Boolean)) {
-			if (!files.some((f) => f.path === filePath)) {
-				if (shouldSuppressReportFile(filePath)) {
-					files.push({
-						path: filePath,
-						status: "added",
-						additions: 1,
-						deletions: 0,
-						diff: summarizeSuppressedFile(filePath),
-					});
-					continue;
-				}
-
-				// Read file content to show as "all added"
-				let content = "";
-				try {
-					content = readFileSync(join(cwd, filePath), "utf-8");
-				} catch {
-					content = "(binary or unreadable file)";
-				}
-				const lines = content.split("\n");
-				const diff = lines.map((l) => `+${l}`).join("\n");
-				files.push({
-					path: filePath,
-					status: "added",
-					additions: lines.length,
-					deletions: 0,
-					diff: `@@ -0,0 +1,${lines.length} @@\n${diff}`,
-				});
-			}
+		const untracked = collectUntrackedFiles(cwd);
+		for (const f of untracked) {
+			if (!files.some((ef) => ef.path === f.path)) files.push(f);
 		}
 	}
 
-	// Sort: modified first, then added, then deleted, then renamed
 	const statusOrder: Record<string, number> = { modified: 0, added: 1, deleted: 2, renamed: 3 };
 	files.sort((a, b) => (statusOrder[a.status] ?? 9) - (statusOrder[b.status] ?? 9));
 
 	const totalAdditions = files.reduce((sum, f) => sum + f.additions, 0);
 	const totalDeletions = files.reduce((sum, f) => sum + f.deletions, 0);
-
-	// Read task markdown if it exists
-	let taskMarkdown: string | undefined;
-	const todoPath = join(cwd, ".context", "todo.md");
-	if (existsSync(todoPath)) {
-		try {
-			taskMarkdown = readFileSync(todoPath, "utf-8");
-		} catch {}
-	}
 
 	return {
 		title,
@@ -265,8 +242,53 @@ function gatherReportData(cwd: string, title: string, summary: string, baseRef: 
 		baseRef: resolvedRef,
 		totalAdditions,
 		totalDeletions,
-		taskMarkdown,
+		taskMarkdown: readTaskMarkdown(cwd),
 	};
+}
+
+interface ReportMetaInput {
+	cwd: string;
+	title: string;
+	summary: string;
+	report: ReportData;
+	result: ReportResult;
+}
+
+function buildReportMeta(input: ReportMetaInput): Record<string, unknown> {
+	const { cwd, title, summary, report, result } = input;
+	return {
+		category: "completion",
+		title,
+		summary,
+		sourcePath: join(cwd, ".context", "todo.md"),
+		viewerPath: join(cwd, ".context", "todo.md"),
+		viewerLabel: title,
+		tags: ["completion", "git", "diff"],
+		metadata: {
+			baseRef: report.baseRef,
+			fileCount: report.files.length,
+			totalAdditions: report.totalAdditions,
+			totalDeletions: report.totalDeletions,
+			action: result.action,
+			rolledBackFiles: result.rolledBackFiles,
+		},
+	};
+}
+
+function reportDetails(result: ReportResult, report: ReportData): Record<string, unknown> {
+	return {
+		action: result.action,
+		rolledBackFiles: result.rolledBackFiles,
+		totalFiles: report.files.length,
+		totalAdditions: report.totalAdditions,
+		totalDeletions: report.totalDeletions,
+	};
+}
+
+function isEmptyResult(details: Record<string, unknown>): boolean {
+	if (!details) return true;
+	if (details.totalFiles === undefined && !details.content) return true;
+	return false;
 }
 
 // ── HTTP Server ──────────────────────────────────────────────────────
@@ -494,92 +516,43 @@ export default function (pi: ExtensionAPI) {
 			"copy the report, or save it to the desktop.",
 		parameters: ShowReportParams,
 
-		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			const {
-				title = "Completion Report",
-				summary = "",
-				base_ref,
-			} = params as { title?: string; summary?: string; base_ref?: string };
+		async execute(...args: any[]) {
+			const [, params, , , ctx] = args;
+			const cwd = (ctx.cwd || process.cwd()) as CwdPath;
 
-			const cwd = ctx.cwd || process.cwd();
-
-			// Check if we're in a git repo
 			if (!isGitRepo(cwd)) {
-				return {
-					content: [{ type: "text" as const, text: "Error: Not a git repository. The completion report requires git to gather file changes." }],
-				};
+				return { content: [{ type: "text" as const, text: "Error: Not a git repository." }] };
 			}
 
-			// Gather report data
-			const report = gatherReportData(cwd, title, summary, base_ref || "");
+			const report = gatherReportData({
+				cwd,
+				title: (params as any).title || "Completion Report",
+				summary: (params as any).summary || "",
+				baseRef: (params as any).base_ref || "",
+			});
 
 			if (report.files.length === 0) {
-				return {
-					content: [{ type: "text" as const, text: "No file changes detected. Nothing to report." }],
-				};
+				return { content: [{ type: "text" as const, text: "No file changes detected." }] };
 			}
 
-			// Clean up any previous server
 			cleanupServer();
-
-			// Start server and open browser
 			const { port, server, waitForResult } = await startReportServer(report, cwd);
 			activeServer = server;
 
 			const url = `http://127.0.0.1:${port}`;
-			activeSession = {
-				kind: "report",
-				title,
-				url,
-				server,
-				onClose: () => {
-					activeServer = null;
-					activeSession = null;
-				},
-			};
+			activeSession = { kind: "report", title: report.title, url, server, onClose: () => { activeServer = null; activeSession = null; } };
 			registerActiveViewer(activeSession);
 			openBrowser(url);
 			notifyViewerOpen(ctx, activeSession);
 
-			// Wait for user to close the report
 			try {
 				const result = await waitForResult();
-
-				try {
-					upsertPersistedReport({
-						category: "completion",
-						title,
-						summary,
-						sourcePath: join(cwd, ".context", "todo.md"),
-						viewerPath: join(cwd, ".context", "todo.md"),
-						viewerLabel: title,
-						tags: ["completion", "git", "diff"],
-						metadata: {
-							baseRef: report.baseRef,
-							fileCount: report.files.length,
-							totalAdditions: report.totalAdditions,
-							totalDeletions: report.totalDeletions,
-							action: result.action,
-							rolledBackFiles: result.rolledBackFiles,
-						},
-					});
-				} catch {}
-
+				try { upsertPersistedReport(buildReportMeta({ cwd, title: report.title, summary: report.summary, report, result })); } catch {}
 				const rolledBack = result.rolledBackFiles.length;
 				const summary = rolledBack > 0
 					? `Report closed. ${rolledBack} file${rolledBack > 1 ? "s" : ""} rolled back: ${result.rolledBackFiles.join(", ")}`
 					: "Report closed. No files were rolled back.";
-
-				return {
-					content: [{ type: "text" as const, text: summary }],
-					details: {
-						action: result.action,
-						rolledBackFiles: result.rolledBackFiles,
-						totalFiles: report.files.length,
-						totalAdditions: report.totalAdditions,
-						totalDeletions: report.totalDeletions,
-					},
-				};
+				return { content: [{ type: "text" as const, text: summary }], details: reportDetails(result, report) };
 			} finally {
 				cleanupServer();
 			}
@@ -595,7 +568,7 @@ export default function (pi: ExtensionAPI) {
 
 		renderResult(result, _options, theme) {
 			const details = ((result as any).details || result) as any;
-			if (!details || (details.totalFiles === undefined && !details.content)) {
+			if (isEmptyResult(details)) {
 				const text = result.content[0];
 				return new Text(text?.type === "text" ? text.text : "", 0, 0);
 			}
@@ -604,20 +577,12 @@ export default function (pi: ExtensionAPI) {
 			const totalAdditions = details.totalAdditions ?? 0;
 			const totalDeletions = details.totalDeletions ?? 0;
 			const rolledBack = (details.rolledBackFiles || []).length;
+			const info = `Report closed — ${fileCount} files · +${totalAdditions} -${totalDeletions}`;
 
-			let info = `${fileCount} files · +${totalAdditions} -${totalDeletions}`;
 			if (rolledBack > 0) {
-				info += ` · ${rolledBack} rolled back`;
-				return new Text(
-					outputLine(theme, "warning", `Report closed — ${info}`),
-					0, 0,
-				);
+				return new Text(outputLine(theme, "warning", `${info} · ${rolledBack} rolled back`), 0, 0);
 			}
-
-			return new Text(
-				outputLine(theme, "success", `Report closed — ${info}`),
-				0, 0,
-			);
+			return new Text(outputLine(theme, "success", info), 0, 0);
 		},
 	});
 
@@ -640,7 +605,7 @@ export default function (pi: ExtensionAPI) {
 
 			// Parse optional base ref from args
 			const baseRef = args.trim() || "";
-			const report = gatherReportData(cwd, "Completion Report", "", baseRef);
+			const report = gatherReportData({ cwd, title: "Completion Report", summary: "", baseRef });
 
 			if (report.files.length === 0) {
 				ctx.ui.notify("No file changes detected", "info");

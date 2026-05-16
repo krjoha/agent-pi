@@ -23,6 +23,13 @@ interface CleanupResult {
 	deletedCount?: number;
 }
 
+// ── Type Aliases ────────────────────────────────────────────────────
+
+type FilePath = string;
+type FileName = string;
+type CategoryKey = string | null;
+type ByteCount = number;
+
 // ── Config ───────────────────────────────────────────────────────────
 
 const PROTECTED_DIRS = new Set([
@@ -63,14 +70,14 @@ const CATEGORIES: Record<string, {
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-function formatSize(bytes: number): string {
+function formatSize(bytes: ByteCount): string {
 	if (bytes === 0) return "0 B";
 	const units = ["B", "KB", "MB", "GB", "TB"];
 	const i = Math.floor(Math.log(bytes) / Math.log(1024));
 	return (bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1) + " " + units[i];
 }
 
-function isProtected(dirPath: string): boolean {
+function isProtected(dirPath: FilePath): boolean {
 	const resolved = path.resolve(dirPath);
 	for (const p of PROTECTED_DIRS) {
 		if (resolved === p || resolved.startsWith(p + "/")) return true;
@@ -78,20 +85,77 @@ function isProtected(dirPath: string): boolean {
 	return false;
 }
 
-function categorizeEntry(name: string, isDirectory: boolean): string | null {
-	if (isDirectory) {
-		if (CATEGORIES.compiled.directories?.has(name)) return "compiled";
-		return null;
-	}
-	const ext = path.extname(name).toLowerCase();
-	const baseName = path.basename(name);
-	const doubleExt = name.includes(".tar.") ? ".tar" + ext : ext;
+async function getDirSizeRecursive(dir: FilePath): Promise<ByteCount> {
+	let total = 0;
+	try {
+		const ents = await fsp.readdir(dir, { withFileTypes: true });
+		for (const e of ents) {
+			const fp = path.join(dir, e.name);
+			try {
+				const s = await fsp.lstat(fp);
+				if (s.isDirectory()) total += await getDirSizeRecursive(fp);
+				else total += s.size;
+			} catch { /* skip */ }
+		}
+	} catch { /* skip */ }
+	return total;
+}
 
-	if (CATEGORIES.temp.names?.has(baseName)) return "temp";
+async function deleteFiles(files: FilePath[]): Promise<any[]> {
+	const results: any[] = [];
+	for (const filePath of files) {
+		try {
+			const real = await fsp.realpath(filePath);
+			if (isProtected(real)) {
+				results.push({ path: filePath, success: false, error: "Protected path" });
+				continue;
+			}
+			const stat = await fsp.stat(real);
+			let size = stat.size;
+			if (stat.isDirectory()) {
+				size = await getDirSizeRecursive(real);
+				await fsp.rm(real, { recursive: true, force: true });
+			} else {
+				await fsp.unlink(real);
+			}
+			results.push({ path: filePath, success: true, size });
+			await appendDeletionLog({ path: filePath, size, timestamp: new Date().toISOString(), success: true });
+		} catch (err: any) {
+			results.push({ path: filePath, success: false, error: err.message });
+		}
+	}
+	return results;
+}
+
+function matchDirectoryCategory(name: FileName): CategoryKey {
+	return CATEGORIES.compiled.directories?.has(name) ? "compiled" : null;
+}
+
+function matchNameCategory(name: FileName): CategoryKey {
+	const baseName = path.basename(name);
+	return CATEGORIES.temp.names?.has(baseName) ? "temp" : null;
+}
+
+function matchExtensionCategory(name: FileName): CategoryKey {
+	const ext = path.extname(name).toLowerCase();
 	if (CATEGORIES.temp.extensions?.has(ext)) return "temp";
 	if (CATEGORIES.compiled.extensions?.has(ext)) return "compiled";
-	if (CATEGORIES.archives.extensions?.has(ext) || CATEGORIES.archives.extensions?.has(doubleExt)) return "archives";
+	if (CATEGORIES.archives.extensions?.has(ext)) return "archives";
 	return null;
+}
+
+function matchDoubleExtensionCategory(name: FileName): CategoryKey {
+	const ext = path.extname(name).toLowerCase();
+	if (!name.includes(".tar.")) return null;
+	const doubleExt = ".tar" + ext;
+	return CATEGORIES.archives.extensions?.has(doubleExt) ? "archives" : null;
+}
+
+function categorizeEntry(name: FileName, isDirectory: boolean): CategoryKey {
+	if (isDirectory) return matchDirectoryCategory(name);
+	return matchNameCategory(name)
+		|| matchExtensionCategory(name)
+		|| matchDoubleExtensionCategory(name);
 }
 
 // ── Scanner ──────────────────────────────────────────────────────────
@@ -105,7 +169,7 @@ interface ScanFile {
 	isDirectory: boolean;
 }
 
-async function scanDirectory(rootDir: string, enabledCategories: string[]) {
+async function scanDirectory(rootDir: FilePath, enabledCategories: CategoryKey[]) {
 	const results: Record<string, ScanFile[]> = { temp: [], compiled: [], archives: [] };
 	let fileCount = 0;
 
@@ -132,8 +196,7 @@ async function scanDirectory(rootDir: string, enabledCategories: string[]) {
 		if (isProtected(dir)) return;
 
 		let entries;
-		try { entries = await fsp.readdir(dir, { withFileTypes: true }); }
-		catch { return; }
+		try { entries = await fsp.readdir(dir, { withFileTypes: true }); } catch { return; }
 
 		for (const entry of entries) {
 			if (fileCount >= MAX_FILES) return;
@@ -144,34 +207,31 @@ async function scanDirectory(rootDir: string, enabledCategories: string[]) {
 				if (stat.isSymbolicLink()) continue;
 			} catch { continue; }
 
-			const isDir = entry.isDirectory();
-			const category = categorizeEntry(entry.name, isDir);
-
-			if (category && enabledCategories.includes(category)) {
-				try {
-					let size = 0;
-					let mtime: Date;
-					if (isDir) {
-						size = await getDirSize(fullPath, 0);
-						const stat = await fsp.stat(fullPath);
-						mtime = stat.mtime;
-					} else {
-						const stat = await fsp.stat(fullPath);
-						size = stat.size;
-						mtime = stat.mtime;
-					}
-					results[category].push({
-						path: fullPath, name: entry.name, size,
-						sizeFormatted: formatSize(size),
-						modified: mtime.toISOString(), isDirectory: isDir,
-					});
-					fileCount++;
-				} catch { /* stat failed */ }
-				if (isDir) continue;
-			}
-
-			if (isDir) await walk(fullPath, depth + 1);
+			await processEntry(fullPath, entry);
+			if (entry.isDirectory()) await walk(fullPath, depth + 1);
 		}
+	}
+
+	async function processEntry(fullPath: string, entry: { name: string; isDirectory: () => boolean }) {
+		const isDir = entry.isDirectory();
+		const category = categorizeEntry(entry.name, isDir);
+		if (!category || !enabledCategories.includes(category)) return;
+
+		try {
+			let size = 0;
+			let mtime: Date;
+			if (isDir) {
+				size = await getDirSize(fullPath, 0);
+				const stat = await fsp.stat(fullPath);
+				mtime = stat.mtime;
+			} else {
+				const stat = await fsp.stat(fullPath);
+				size = stat.size;
+				mtime = stat.mtime;
+			}
+			results[category].push({ path: fullPath, name: entry.name, size, sizeFormatted: formatSize(size), modified: mtime.toISOString(), isDirectory: isDir });
+			fileCount++;
+		} catch { /* stat failed */ }
 	}
 
 	await walk(rootDir, 0);
@@ -370,56 +430,11 @@ function startCleanupServer(defaultDir: string): Promise<{
 							res.end(JSON.stringify({ error: "No files specified." }));
 							return;
 						}
-
-						const results: any[] = [];
-						for (const filePath of files) {
-							try {
-								const real = await fsp.realpath(filePath);
-								if (isProtected(real)) {
-									results.push({ path: filePath, success: false, error: "Protected path" });
-									continue;
-								}
-								const stat = await fsp.stat(real);
-								const size = stat.isDirectory()
-									? await (async function getSize(d: string): Promise<number> {
-										let t = 0;
-										try {
-											const ents = await fsp.readdir(d, { withFileTypes: true });
-											for (const e of ents) {
-												const fp = path.join(d, e.name);
-												try {
-													const s = await fsp.lstat(fp);
-													if (s.isDirectory()) t += await getSize(fp);
-													else t += s.size;
-												} catch { /* skip */ }
-											}
-										} catch { /* skip */ }
-										return t;
-									})(real)
-									: stat.size;
-
-								if (stat.isDirectory()) {
-									await fsp.rm(real, { recursive: true, force: true });
-								} else {
-									await fsp.unlink(real);
-								}
-
-								results.push({ path: filePath, success: true, size });
-								await appendDeletionLog({ path: filePath, size, timestamp: new Date().toISOString(), success: true });
-							} catch (err: any) {
-								results.push({ path: filePath, success: false, error: err.message });
-							}
-						}
-
-						const deleted = results.filter((r) => r.success);
+						const results = await deleteFiles(files);
+						const deleted = results.filter((r: any) => r.success);
 						const freedBytes = deleted.reduce((s: number, r: any) => s + (r.size || 0), 0);
-
 						res.writeHead(200, { "Content-Type": "application/json" });
-						res.end(JSON.stringify({
-							results, deletedCount: deleted.length,
-							failedCount: results.length - deleted.length,
-							freedBytes, freedFormatted: formatSize(freedBytes),
-						}));
+						res.end(JSON.stringify({ results, deletedCount: deleted.length, failedCount: results.length - deleted.length, freedBytes, freedFormatted: formatSize(freedBytes) }));
 					} catch (err: any) {
 						res.writeHead(500, { "Content-Type": "application/json" });
 						res.end(JSON.stringify({ error: err.message }));
@@ -499,6 +514,19 @@ function openBrowser(url: string): void {
 	}
 }
 
+// ── Tool Execution Helper ──────────────────────────────────────────
+
+async function executeShowCleanup(
+	params: Record<string, unknown>,
+	ctx: any,
+	launchCleanup: (dir: FilePath, ctx?: any) => Promise<string>,
+) {
+	const { directory } = params as { directory?: string };
+	const dir = directory || "/Users/";
+	const msg = await launchCleanup(dir, ctx);
+	return { content: [{ type: "text" as const, text: msg }] };
+}
+
 // ── Tool Parameters ──────────────────────────────────────────────────
 
 const ShowCleanupParams = Type.Object({
@@ -562,11 +590,9 @@ export default function (pi: ExtensionAPI) {
 			"User can select and delete files with confirmation.",
 		parameters: ShowCleanupParams,
 
-		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			const { directory } = params as { directory?: string };
-			const dir = directory || "/Users/";
-			const msg = await launchCleanup(dir, ctx);
-			return { content: [{ type: "text" as const, text: msg }] };
+		async execute(...args: any[]) {
+			const [, params, , , ctx] = args;
+			return executeShowCleanup(params, ctx, launchCleanup);
 		},
 
 		renderCall(args, theme) {

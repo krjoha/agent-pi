@@ -34,6 +34,12 @@ interface SpecViewerResult {
 	modified: boolean;
 }
 
+// ── Type Aliases (reduce primitive obsession) ────────────────────────
+
+type FolderPath = string;
+type SpecAction = "approved" | "changes_requested" | "declined";
+type DocumentKey = string;
+
 // ── MIME Types ────────────────────────────────────────────────────────
 
 const MIME_TYPES: Record<string, string> = {
@@ -53,101 +59,87 @@ const MIME_TYPES: Record<string, string> = {
 
 // ── Folder Discovery ─────────────────────────────────────────────────
 
-function discoverSpecDocuments(folderPath: string): SpecDocument[] {
-	const docs: SpecDocument[] = [];
+function discoverSpecDocument(
+	key: string,
+	label: string,
+	path: string,
+	filePath: string,
+): SpecDocument | null {
+	if (!existsSync(path)) return null;
+	return { key, label, markdown: readFileSync(path, "utf-8"), filePath };
+}
 
-	// 1. spec.md — main spec document
+function discoverSpecMain(folderPath: string): SpecDocument | null {
 	const specPath = join(folderPath, "spec.md");
-	if (existsSync(specPath)) {
-		docs.push({
-			key: "spec",
-			label: "Spec",
-			markdown: readFileSync(specPath, "utf-8"),
-			filePath: "spec.md",
-		});
-	}
+	if (!existsSync(specPath)) return null;
+	return { key: "spec", label: "Spec", markdown: readFileSync(specPath, "utf-8"), filePath: "spec.md" };
+}
 
-	// 2. planning/requirements.md
+function discoverRequirements(folderPath: string): SpecDocument | null {
 	const reqPath = join(folderPath, "planning", "requirements.md");
-	if (existsSync(reqPath)) {
-		docs.push({
-			key: "requirements",
-			label: "Requirements",
-			markdown: readFileSync(reqPath, "utf-8"),
-			filePath: "planning/requirements.md",
-		});
-	}
+	if (!existsSync(reqPath)) return null;
+	return { key: "requirements", label: "Requirements", markdown: readFileSync(reqPath, "utf-8"), filePath: "planning/requirements.md" };
+}
 
-	// 3. Tasks — planning/tasks.md or any tasks*.md in folder
+function discoverTasks(folderPath: string): SpecDocument | null {
 	const tasksPath = join(folderPath, "planning", "tasks.md");
 	if (existsSync(tasksPath)) {
-		docs.push({
-			key: "tasks",
-			label: "Tasks",
-			markdown: readFileSync(tasksPath, "utf-8"),
-			filePath: "planning/tasks.md",
-		});
-	} else {
-		// Check root for tasks*.md
-		try {
-			const rootFiles = readdirSync(folderPath);
-			const taskFile = rootFiles.find((f) => f.startsWith("tasks") && f.endsWith(".md"));
-			if (taskFile) {
-				docs.push({
-					key: "tasks",
-					label: "Tasks",
-					markdown: readFileSync(join(folderPath, taskFile), "utf-8"),
-					filePath: taskFile,
-				});
-			}
-		} catch {}
+		return { key: "tasks", label: "Tasks", markdown: readFileSync(tasksPath, "utf-8"), filePath: "planning/tasks.md" };
 	}
+	try {
+		const rootFiles = readdirSync(folderPath);
+		const taskFile = rootFiles.find((f) => f.startsWith("tasks") && f.endsWith(".md"));
+		if (taskFile) {
+			return { key: "tasks", label: "Tasks", markdown: readFileSync(join(folderPath, taskFile), "utf-8"), filePath: taskFile };
+		}
+	} catch {}
+	return null;
+}
 
-	// 4. Visuals — planning/visuals/ folder
+function discoverVisuals(folderPath: string): SpecDocument | null {
 	const visualsDir = join(folderPath, "planning", "visuals");
-	if (existsSync(visualsDir)) {
-		try {
-			const visualFiles = readdirSync(visualsDir)
-				.filter((f) => {
-					const ext = extname(f).toLowerCase();
-					return [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".html", ".htm"].includes(ext);
-				})
-				.map((f) => join("planning", "visuals", f));
+	if (!existsSync(visualsDir)) return null;
+	try {
+		const visualFiles = readdirSync(visualsDir)
+			.filter((f) => {
+				const ext = extname(f).toLowerCase();
+				return [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".html", ".htm"].includes(ext);
+			})
+			.map((f) => join("planning", "visuals", f));
+		if (visualFiles.length > 0) {
+			return { key: "visuals", label: "Visuals", markdown: "", filePath: "planning/visuals/", isVisuals: true, visualFiles };
+		}
+	} catch {}
+	return null;
+}
 
-			if (visualFiles.length > 0) {
-				docs.push({
-					key: "visuals",
-					label: "Visuals",
-					markdown: "",
-					filePath: "planning/visuals/",
-					isVisuals: true,
-					visualFiles,
-				});
-			}
-		} catch {}
-	}
-
-	// 5. Other planning docs (excluding already-added ones)
+function discoverPlanningExtras(folderPath: string): SpecDocument[] {
+	const docs: SpecDocument[] = [];
 	const planningDir = join(folderPath, "planning");
-	if (existsSync(planningDir)) {
-		try {
-			const knownFiles = new Set(["requirements.md", "tasks.md", "initialization.md", "questions.md"]);
-			const planningFiles = readdirSync(planningDir)
-				.filter((f) => f.endsWith(".md") && !knownFiles.has(f))
-				.sort();
+	if (!existsSync(planningDir)) return docs;
+	try {
+		const knownFiles = new Set(["requirements.md", "tasks.md", "initialization.md", "questions.md"]);
+		const planningFiles = readdirSync(planningDir).filter((f) => f.endsWith(".md") && !knownFiles.has(f)).sort();
+		for (const file of planningFiles) {
+			docs.push({
+				key: "other-" + file.replace(".md", ""),
+				label: basename(file, ".md").replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+				markdown: readFileSync(join(planningDir, file), "utf-8"),
+				filePath: join("planning", file),
+			});
+		}
+	} catch {}
+	return docs;
+}
 
-			for (const file of planningFiles) {
-				const key = "other-" + file.replace(".md", "");
-				docs.push({
-					key,
-					label: basename(file, ".md").replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
-					markdown: readFileSync(join(planningDir, file), "utf-8"),
-					filePath: join("planning", file),
-				});
-			}
-		} catch {}
-	}
-
+function discoverSpecDocuments(folderPath: string): SpecDocument[] {
+	const docs: SpecDocument[] = [];
+	const push = (doc: SpecDocument | null) => { if (doc) docs.push(doc); };
+	push(discoverSpecMain(folderPath));
+	push(discoverRequirements(folderPath));
+	push(discoverTasks(folderPath));
+	push(discoverVisuals(folderPath));
+	docs.push(...discoverPlanningExtras(folderPath));
 	return docs;
 }
 
@@ -363,6 +355,105 @@ function formatCommentsForAgent(comments: SpecComment[]): string {
 	return lines.join("\n").trim();
 }
 
+// ── Result Handling ────────────────────────────────────────────────────
+
+function buildApprovedResponse(result: SpecViewerResult, folderPath: FolderPath, pi: ExtensionAPI) {
+	const note = result.modified ? " (spec was edited by user — use the updated version)" : "";
+	pi.sendMessage(
+		{ customType: "spec-approved", content: `Spec approved! Proceed with implementation.${note}`, display: true },
+		{ deliverAs: "followUp" as any, triggerTurn: true },
+	);
+	return {
+		content: [{ type: "text" as const, text: `Spec approved by user.${note} Modified files have been saved.` }],
+		details: { action: "approved" as const, modified: result.modified, folderPath },
+	};
+}
+
+function buildChangesResponse(result: SpecViewerResult, folderPath: FolderPath, pi: ExtensionAPI) {
+	const commentSummary = formatCommentsForAgent(result.comments);
+	const note = result.modified ? "\n\nNote: Some documents were also edited inline — check the updated files." : "";
+	pi.sendMessage(
+		{ customType: "spec-changes-requested", content: `Changes requested on the spec. Here are the comments:\n\n${commentSummary}${note}`, display: true },
+		{ deliverAs: "followUp" as any, triggerTurn: true },
+	);
+	return {
+		content: [{ type: "text" as const, text: `User requested changes to the spec. Comments:\n\n${commentSummary}${note}` }],
+		details: { action: "changes_requested" as const, comments: result.comments, modified: result.modified, folderPath },
+	};
+}
+
+function buildDeclinedResponse(folderPath: FolderPath) {
+	return {
+		content: [{ type: "text" as const, text: "User closed the spec viewer without approving. Ask if they want changes or have feedback." }],
+		details: { action: "declined" as const, folderPath },
+	};
+}
+
+function handleSpecResult(
+	result: SpecViewerResult,
+	folderPath: FolderPath,
+	pi: ExtensionAPI,
+): { content: { type: string; text?: string }[]; details?: Record<string, unknown> } {
+	if (result.action === "approved") return buildApprovedResponse(result, folderPath, pi);
+	if (result.action === "changes_requested") return buildChangesResponse(result, folderPath, pi);
+	return buildDeclinedResponse(folderPath);
+}
+
+// ── Render Helpers ───────────────────────────────────────────────────
+
+function renderNoDetails(result: any): Text {
+	const text = result.content[0];
+	return new Text(text?.type === "text" ? text.text : "", 0, 0);
+}
+
+function renderApproved(details: any, theme: any): Text {
+	const modNote = details.modified ? " (edited)" : "";
+	return new Text(outputLine(theme, "success", `Spec approved${modNote}`), 0, 0);
+}
+
+function renderChangesRequested(details: any, theme: any): Text {
+	const count = details.comments?.length || 0;
+	return new Text(
+		outputLine(theme, "warning", `Changes requested (${count} comment${count !== 1 ? "s" : ""})`),
+		0, 0,
+	);
+}
+
+function renderDeclined(theme: any): Text {
+	return new Text(outputLine(theme, "warning", "Spec viewer closed without action"), 0, 0);
+}
+
+function renderSpecResult(result: any, theme: any): Text {
+	const details = result.details as any;
+	if (!details) return renderNoDetails(result);
+	if (details.action === "approved") return renderApproved(details, theme);
+	if (details.action === "changes_requested") return renderChangesRequested(details, theme);
+	return renderDeclined(theme);
+}
+
+// ── Tool Execution Helper ────────────────────────────────────────────
+
+async function executeShowSpec(
+	params: Record<string, unknown>,
+	ctx: ExtensionContext,
+	piRef: ExtensionAPI,
+	runSpecViewer: (ctx: ExtensionContext, folderPath: FolderPath, title: string) => Promise<SpecViewerResult>,
+) {
+	const { folder_path, title: titleParam } = params as { folder_path: string; title?: string };
+	const folderPath = resolve(folder_path);
+	if (!existsSync(folderPath) || !statSync(folderPath).isDirectory()) {
+		return { content: [{ type: "text" as const, text: `Error: folder not found: ${folder_path}` }] };
+	}
+
+	const displayTitle = titleParam || basename(folderPath);
+	try {
+		const result = await runSpecViewer(ctx, folderPath, displayTitle);
+		return handleSpecResult(result, folder_path, piRef);
+	} catch (err: any) {
+		return { content: [{ type: "text" as const, text: `Spec viewer error: ${err.message}` }] };
+	}
+}
+
 // ── Tool Parameters ──────────────────────────────────────────────────
 
 const ShowSpecParams = Type.Object({
@@ -391,35 +482,73 @@ export default function (pi: ExtensionAPI) {
 
 	// ── Core viewer logic ────────────────────────────────────────────
 
-	async function runSpecViewer(
-		ctx: ExtensionContext,
-		folderPath: string,
-		title: string,
-	): Promise<SpecViewerResult> {
-		cleanupServer();
-
-		// Discover documents
-		const documents = discoverSpecDocuments(folderPath);
-		if (documents.length === 0) {
-			throw new Error(`No spec documents found in ${folderPath}`);
-		}
-
-		// Load existing comments
-		let existingComments: SpecComment[] = [];
+	function loadExistingComments(folderPath: FolderPath): SpecComment[] {
 		const commentsPath = join(folderPath, "spec-comments.json");
-		if (existsSync(commentsPath)) {
-			try {
-				const data = JSON.parse(readFileSync(commentsPath, "utf-8"));
-				existingComments = data.comments || [];
-			} catch {}
-		}
+		if (!existsSync(commentsPath)) return [];
+		try {
+			const data = JSON.parse(readFileSync(commentsPath, "utf-8"));
+			return data.comments || [];
+		} catch { return []; }
+	}
 
-		// Start server
+	function saveMarkdownChanges(changes: Record<string, string>, folderPath: FolderPath) {
+		for (const [relPath, content] of Object.entries(changes)) {
+			try {
+				const absPath = resolve(folderPath, relPath);
+				if (absPath.startsWith(resolve(folderPath))) {
+					writeFileSync(absPath, content, "utf-8");
+				}
+			} catch { /* skip */ }
+		}
+	}
+
+	function saveComments(comments: SpecComment[], folderPath: FolderPath) {
+		if (!comments.length) return;
+		try {
+			const commentsPath = join(folderPath, "spec-comments.json");
+			writeFileSync(commentsPath, JSON.stringify({ comments }, null, 2), "utf-8");
+		} catch { /* skip */ }
+	}
+
+	function persistSpecReview(
+		result: SpecViewerResult,
+		folderPath: FolderPath,
+		title: string,
+		documentCount: number,
+	) {
+		const editedDocCount = result.markdownChanges ? Object.keys(result.markdownChanges).length : 0;
+		try {
+			upsertPersistedReport({
+				category: "spec",
+				title,
+				summary: `${documentCount} document(s) reviewed${result.comments.length ? `, ${result.comments.length} comment(s)` : ""}`,
+				sourcePath: folderPath,
+				viewerPath: folderPath,
+				viewerLabel: title,
+				tags: ["spec", "review"],
+				metadata: {
+					action: result.action,
+					modified: result.modified,
+					commentCount: result.comments.length,
+					editedDocCount,
+					documentCount,
+				},
+			});
+		} catch { /* skip */ }
+	}
+
+	interface ViewerSetup {
+		ctx: ExtensionContext;
+		folderPath: FolderPath;
+		documents: SpecDocument[];
+		title: string;
+		existingComments: SpecComment[];
+	}
+
+	async function startAndRegisterViewer(setup: ViewerSetup) {
+		const { ctx, folderPath, documents, title, existingComments } = setup;
 		const { port, server, waitForResult } = await startSpecViewerServer(
-			folderPath,
-			documents,
-			title,
-			existingComments,
+			folderPath, documents, title, existingComments,
 		);
 		activeServer = server;
 
@@ -429,57 +558,37 @@ export default function (pi: ExtensionAPI) {
 			title: "Spec viewer",
 			url,
 			server,
-			onClose: () => {
-				activeServer = null;
-				activeSession = null;
-			},
+			onClose: () => { activeServer = null; activeSession = null; },
 		};
 		registerActiveViewer(activeSession);
 		openBrowser(url);
 		notifyViewerOpen(ctx, activeSession);
+		return waitForResult;
+	}
+
+	async function runSpecViewer(
+		ctx: ExtensionContext,
+		folderPath: FolderPath,
+		title: string,
+	): Promise<SpecViewerResult> {
+		cleanupServer();
+
+		const documents = discoverSpecDocuments(folderPath);
+		if (documents.length === 0) {
+			throw new Error(`No spec documents found in ${folderPath}`);
+		}
+
+		const existingComments = loadExistingComments(folderPath);
+		const waitForResult = await startAndRegisterViewer({ ctx, folderPath, documents, title, existingComments });
 
 		try {
 			const result = await waitForResult();
 
-			// Save any markdown changes back to files
 			if (result.modified && result.markdownChanges) {
-				for (const [relPath, content] of Object.entries(result.markdownChanges)) {
-					try {
-						const absPath = resolve(folderPath, relPath);
-						// Security check
-						if (absPath.startsWith(resolve(folderPath))) {
-							writeFileSync(absPath, content, "utf-8");
-						}
-					} catch {}
-				}
+				saveMarkdownChanges(result.markdownChanges, folderPath);
 			}
-
-			// Save final comments
-			if (result.comments && result.comments.length > 0) {
-				try {
-					writeFileSync(commentsPath, JSON.stringify({ comments: result.comments }, null, 2), "utf-8");
-				} catch {}
-			}
-
-			try {
-				const editedDocCount = result.markdownChanges ? Object.keys(result.markdownChanges).length : 0;
-				upsertPersistedReport({
-					category: "spec",
-					title,
-					summary: `${documents.length} document(s) reviewed${result.comments.length ? `, ${result.comments.length} comment(s)` : ""}`,
-					sourcePath: folderPath,
-					viewerPath: folderPath,
-					viewerLabel: title,
-					tags: ["spec", "review"],
-					metadata: {
-						action: result.action,
-						modified: result.modified,
-						commentCount: result.comments.length,
-						editedDocCount,
-						documentCount: documents.length,
-					},
-				});
-			} catch {}
+			saveComments(result.comments, folderPath);
+			persistSpecReview(result, folderPath, title, documents.length);
 
 			return result;
 		} finally {
@@ -504,99 +613,9 @@ export default function (pi: ExtensionAPI) {
 			"- Approve the spec or request changes with comment feedback",
 		parameters: ShowSpecParams,
 
-		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			const { folder_path, title: titleParam } = params as {
-				folder_path: string;
-				title?: string;
-			};
-
-			// Resolve folder path
-			const folderPath = resolve(folder_path);
-			if (!existsSync(folderPath) || !statSync(folderPath).isDirectory()) {
-				return {
-					content: [{ type: "text" as const, text: `Error: folder not found: ${folder_path}` }],
-				};
-			}
-
-			const displayTitle = titleParam || basename(folderPath);
-
-			try {
-				const result = await runSpecViewer(ctx, folderPath, displayTitle);
-
-				// Handle approved
-				if (result.action === "approved") {
-					const modifiedNote = result.modified
-						? " (spec was edited by user — use the updated version)"
-						: "";
-
-					piRef.sendMessage(
-						{
-							customType: "spec-approved",
-							content: `Spec approved! Proceed with implementation.${modifiedNote}`,
-							display: true,
-						},
-						{ deliverAs: "followUp" as any, triggerTurn: true },
-					);
-
-					return {
-						content: [{
-							type: "text" as const,
-							text: `Spec approved by user.${modifiedNote} Modified files have been saved.`,
-						}],
-						details: {
-							action: "approved" as const,
-							modified: result.modified,
-							folderPath: folder_path,
-						},
-					};
-				}
-
-				// Handle changes requested
-				if (result.action === "changes_requested") {
-					const commentSummary = formatCommentsForAgent(result.comments);
-					const modifiedNote = result.modified
-						? "\n\nNote: Some documents were also edited inline — check the updated files."
-						: "";
-
-					piRef.sendMessage(
-						{
-							customType: "spec-changes-requested",
-							content: `Changes requested on the spec. Here are the comments:\n\n${commentSummary}${modifiedNote}`,
-							display: true,
-						},
-						{ deliverAs: "followUp" as any, triggerTurn: true },
-					);
-
-					return {
-						content: [{
-							type: "text" as const,
-							text: `User requested changes to the spec. Comments:\n\n${commentSummary}${modifiedNote}`,
-						}],
-						details: {
-							action: "changes_requested" as const,
-							comments: result.comments,
-							modified: result.modified,
-							folderPath: folder_path,
-						},
-					};
-				}
-
-				// Declined / closed
-				return {
-					content: [{
-						type: "text" as const,
-						text: "User closed the spec viewer without approving. Ask if they want changes or have feedback.",
-					}],
-					details: {
-						action: "declined" as const,
-						folderPath: folder_path,
-					},
-				};
-			} catch (err: any) {
-				return {
-					content: [{ type: "text" as const, text: `Spec viewer error: ${err.message}` }],
-				};
-			}
+		async execute(...args: any[]) {
+			const [, params, , , ctx] = args;
+			return executeShowSpec(params, ctx, piRef, runSpecViewer);
 		},
 
 		renderCall(args, theme) {
@@ -610,36 +629,46 @@ export default function (pi: ExtensionAPI) {
 		},
 
 		renderResult(result, _options, theme) {
-			const details = result.details as any;
-			if (!details) {
-				const text = result.content[0];
-				return new Text(text?.type === "text" ? text.text : "", 0, 0);
-			}
-
-			if (details.action === "approved") {
-				const modNote = details.modified ? " (edited)" : "";
-				return new Text(
-					outputLine(theme, "success", `Spec approved${modNote}`),
-					0, 0,
-				);
-			}
-
-			if (details.action === "changes_requested") {
-				const count = details.comments?.length || 0;
-				return new Text(
-					outputLine(theme, "warning", `Changes requested (${count} comment${count !== 1 ? "s" : ""})`),
-					0, 0,
-				);
-			}
-
-			return new Text(
-				outputLine(theme, "warning", "Spec viewer closed without action"),
-				0, 0,
-			);
+			return renderSpecResult(result, theme);
 		},
 	});
 
 	// ── /spec command ────────────────────────────────────────────────
+
+	function notifySpecApproved(result: SpecViewerResult, ctx: ExtensionContext) {
+		piRef.sendMessage(
+			{
+				customType: "spec-approved",
+				content: `Spec approved! Proceed with implementation.${result.modified ? " (spec was edited)" : ""}`,
+				display: true,
+			},
+			{ deliverAs: "followUp" as any, triggerTurn: true },
+		);
+		ctx.ui.notify("Spec approved — continuing...", "info");
+	}
+
+	function notifySpecChangesRequested(result: SpecViewerResult, ctx: ExtensionContext) {
+		const commentSummary = formatCommentsForAgent(result.comments);
+		piRef.sendMessage(
+			{
+				customType: "spec-changes-requested",
+				content: `Changes requested:\n\n${commentSummary}`,
+				display: true,
+			},
+			{ deliverAs: "followUp" as any, triggerTurn: true },
+		);
+		ctx.ui.notify("Changes requested — reviewing comments...", "info");
+	}
+
+	function handleSpecCommandResult(result: SpecViewerResult, ctx: ExtensionContext) {
+		if (result.action === "approved") {
+			notifySpecApproved(result, ctx);
+		} else if (result.action === "changes_requested") {
+			notifySpecChangesRequested(result, ctx);
+		} else if (result.modified) {
+			ctx.ui.notify("Spec was modified but no action taken.", "info");
+		}
+	}
 
 	pi.registerCommand("spec", {
 		description: "Open the spec viewer for a spec folder (e.g. /spec context-os/specs/2025-06-25-feature/)",
@@ -665,31 +694,7 @@ export default function (pi: ExtensionAPI) {
 
 			try {
 				const result = await runSpecViewer(ctx, resolved, displayTitle);
-
-				if (result.action === "approved") {
-					piRef.sendMessage(
-						{
-							customType: "spec-approved",
-							content: `Spec approved! Proceed with implementation.${result.modified ? " (spec was edited)" : ""}`,
-							display: true,
-						},
-						{ deliverAs: "followUp" as any, triggerTurn: true },
-					);
-					ctx.ui.notify("Spec approved — continuing...", "info");
-				} else if (result.action === "changes_requested") {
-					const commentSummary = formatCommentsForAgent(result.comments);
-					piRef.sendMessage(
-						{
-							customType: "spec-changes-requested",
-							content: `Changes requested:\n\n${commentSummary}`,
-							display: true,
-						},
-						{ deliverAs: "followUp" as any, triggerTurn: true },
-					);
-					ctx.ui.notify("Changes requested — reviewing comments...", "info");
-				} else if (result.modified) {
-					ctx.ui.notify("Spec was modified but no action taken.", "info");
-				}
+				handleSpecCommandResult(result, ctx);
 			} catch (err: any) {
 				ctx.ui.notify(`Error: ${err.message}`, "error");
 			}

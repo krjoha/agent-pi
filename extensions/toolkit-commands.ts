@@ -21,6 +21,12 @@ import { applyExtensionDefaults } from "./lib/themeMap.ts";
 import { DEFAULT_SUBAGENT_MODEL } from "./lib/defaults.ts";
 import { TOOLKIT_WORKER_MODEL } from "./lib/toolkit-cli.ts";
 
+// ── Type Aliases ─────────────────────────────────
+
+type CommandName = string;
+type ToolName = string;
+type FilePath = string;
+
 // ── Types ────────────────────────────────────────
 
 interface CommandDef {
@@ -37,31 +43,21 @@ interface CommandDef {
 
 // Map toolkit tool names to Pi tool names
 const TOOL_MAP: Record<string, string> = {
-	Bash: "bash",
-	bash: "bash",
-	Read: "read",
-	read: "read",
-	Write: "write",
-	write: "write",
-	Edit: "edit",
-	edit: "edit",
-	Grep: "grep",
-	grep: "grep",
-	Glob: "find",
-	glob: "find",
-	Find: "find",
-	find: "find",
-	Ls: "ls",
-	ls: "ls",
+	Bash: "bash", bash: "bash",
+	Read: "read", read: "read",
+	Write: "write", write: "write",
+	Edit: "edit", edit: "edit",
+	Grep: "grep", grep: "grep",
+	Glob: "find", find: "find",
+	Ls: "ls", ls: "ls",
 	"file-system": "read,write,edit",
 	"AskUserQuestion": "ask_user",
 	Task: "dispatch_agent",
 	Skill: "skill",
-	Python: "bash",
-	python: "bash",
+	Python: "bash", python: "bash",
 	terminal: "bash",
 	"claude-code-sdk": "read,grep,bash",
-	// Commander MCP tools (Claude Code → Pi name mapping)
+	"SlashCommand": "skill",
 	"mcp__commander__commander_task": "commander_task",
 	"mcp__commander__commander_session": "commander_session",
 	"mcp__commander__commander_workflow": "commander_workflow",
@@ -71,30 +67,25 @@ const TOOL_MAP: Record<string, string> = {
 	"mcp__commander__commander_orchestration": "commander_orchestration",
 	"mcp__commander__commander_dependency": "commander_dependency",
 	"mcp__commander__commander_agentmail": "commander_agentmail",
-	// Legacy tool names used in session-cleanup.md
 	"mcp__commander__commander_session_cleanup": "commander_session",
 	"mcp__commander__commander_terminal_sessions": "commander_session",
-	// Legacy pre-unification commander tool names (all map to unified commander_task)
 	"mcp__commander__commander_task_lifecycle": "commander_task",
 	"mcp__commander__commander_task_group": "commander_task",
 	"mcp__commander__commander_comment": "commander_task",
 	"mcp__commander__commander_log": "commander_task",
-	// Claude Code tool equivalents
-	"SlashCommand": "skill",
 };
 
-export function mapTools(toolList: string[]): string[] {
-	const result: string[] = [];
-	for (let t of toolList) {
-		// Handle Claude Code tool filter patterns like "Bash(python3:*)"
-		// Strip the filter suffix — Pi doesn't use it, just map the base tool name
-		const filterMatch = t.match(/^([A-Za-z_-]+)\(.*\)$/);
-		if (filterMatch) t = filterMatch[1];
+function mapToolEntry(raw: ToolName): ToolName[] {
+	const clean = (raw.match(/^([A-Za-z_-]+)\(.*\)$/) || [])[1] || raw;
+	const mapped = TOOL_MAP[clean] ?? clean.toLowerCase().replace(/-/g, "_");
+	return mapped.split(",").map((m) => m.trim()).filter(Boolean);
+}
 
-		const mapped = TOOL_MAP[t] ?? t.toLowerCase().replace(/-/g, "_");
-		for (const m of mapped.split(",")) {
-			const trimmed = m.trim();
-			if (trimmed && !result.includes(trimmed)) result.push(trimmed);
+export function mapTools(toolList: ToolName[]): ToolName[] {
+	const result: ToolName[] = [];
+	for (const t of toolList) {
+		for (const mapped of mapToolEntry(t)) {
+			if (!result.includes(mapped)) result.push(mapped);
 		}
 	}
 	return result.length > 0 ? result : ["read", "grep", "find", "ls", "bash"];
@@ -102,90 +93,104 @@ export function mapTools(toolList: string[]): string[] {
 
 // ── Parser ───────────────────────────────────────
 
-function parseCommandFile(filePath: string): CommandDef | null {
+function parseFrontmatter(raw: string): Record<string, string> {
+	const fm: Record<string, string> = {};
+	const match = raw.match(/^---\s*\n([\s\S]*?)\n---\s*\n([\s\S]*)$/);
+	if (!match) return fm;
+	for (const line of match[1].split("\n")) {
+		const idx = line.indexOf(":");
+		if (idx > 0) { fm[line.slice(0, idx).trim()] = line.slice(idx + 1).trim(); }
+	}
+	return { ...fm, __body__: match[2].trim() };
+}
+
+function parseAllowedTools(raw: string | undefined): string[] {
+	if (!raw) return [];
 	try {
-		const raw = readFileSync(filePath, "utf-8");
-		const match = raw.match(/^---\s*\n([\s\S]*?)\n---\s*\n([\s\S]*)$/);
-		if (!match) return null;
+		const parsed = JSON.parse(raw.replace(/'/g, '"'));
+		return Array.isArray(parsed) ? parsed : [parsed];
+	} catch {
+		return raw.split(",").map((s) => s.trim()).filter(Boolean);
+	}
+}
 
-		const frontmatter: Record<string, string> = {};
-		for (const line of match[1].split("\n")) {
-			const idx = line.indexOf(":");
-			if (idx > 0) {
-				frontmatter[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
-			}
-		}
+function resolveCommandName(fm: Record<string, string>, filePath: FilePath): { name: CommandName; nameFromFrontmatter: boolean } {
+	if (fm.name) return { name: fm.name, nameFromFrontmatter: true };
+	const fallback = filePath.split("/").pop()?.replace(/\.md$/, "") || "unknown";
+	return { name: fallback, nameFromFrontmatter: false };
+}
 
-		const desc = frontmatter.description;
-		if (!desc) return null;
+function buildCommandDefFromFrontmatter(fm: Record<string, string>, filePath: FilePath): CommandDef {
+	const { name, nameFromFrontmatter } = resolveCommandName(fm, filePath);
+	return {
+		name,
+		nameFromFrontmatter,
+		description: fm.description,
+		argumentHint: fm["argument-hint"] || "",
+		allowedTools: parseAllowedTools(fm["allowed-tools"]),
+		context: (fm.context || "").toLowerCase() === "fork" ? "fork" : "inline",
+		agent: fm.agent || "general-purpose",
+		body: fm.__body__ || "",
+		file: filePath,
+	};
+}
 
-		const allowedToolsRaw = frontmatter["allowed-tools"];
-		let allowedTools: string[] = [];
-		if (allowedToolsRaw) {
-			try {
-				const parsed = JSON.parse(allowedToolsRaw.replace(/'/g, '"'));
-				allowedTools = Array.isArray(parsed) ? parsed : [parsed];
-			} catch {
-				allowedTools = allowedToolsRaw.split(",").map((s) => s.trim()).filter(Boolean);
-			}
-		}
-
-		const context = (frontmatter.context || "").toLowerCase() === "fork" ? "fork" : "inline";
-		const nameFromFrontmatter = !!frontmatter.name;
-		const name = frontmatter.name || filePath.split("/").pop()?.replace(/\.md$/, "") || "unknown";
-
-		return {
-			name,
-			nameFromFrontmatter,
-			description: desc,
-			argumentHint: frontmatter["argument-hint"] || "",
-			allowedTools,
-			context,
-			agent: frontmatter.agent || "general-purpose",
-			body: match[2].trim(),
-			file: filePath,
-		};
+function parseCommandFile(filePath: FilePath): CommandDef | null {
+	try {
+		const fm = parseFrontmatter(readFileSync(filePath, "utf-8"));
+		if (!fm.description) return null;
+		return buildCommandDefFromFrontmatter(fm, filePath);
 	} catch {
 		return null;
 	}
+}
+
+function isDirectory(path: string): boolean {
+	try {
+		const st = statSync(path);
+		return st.isDirectory();
+	} catch { return false; }
+}
+
+function collectCommandFiles(dir: string): FilePath[] {
+	const files: FilePath[] = [];
+	if (!existsSync(dir)) return files;
+	for (const entry of readdirSync(dir, { withFileTypes: true })) {
+		const fullPath = join(dir, entry.name);
+		const isDir = entry.isDirectory() || (entry.isSymbolicLink() && isDirectory(fullPath));
+		if (isDir) {
+			files.push(...collectCommandFiles(fullPath));
+		} else if (entry.name.endsWith(".md")) {
+			files.push(fullPath);
+		}
+	}
+	return files;
+}
+
+function resolveCommandNameWithDir(def: CommandDef, baseDir: string, fileDir: string): CommandDef {
+	if (def.nameFromFrontmatter) return def;
+	const relDir = relative(baseDir, fileDir);
+	if (relDir) {
+		return { ...def, name: `${relDir.replace(/[\\/]/g, "-")}-${def.name}` };
+	}
+	return def;
 }
 
 export function scanCommandDirs(baseDir: string): CommandDef[] {
 	const commands: CommandDef[] = [];
 	const seen = new Set<string>();
 
-	function scan(d: string) {
-		if (!existsSync(d)) return;
-		for (const file of readdirSync(d, { withFileTypes: true })) {
-			const fullPath = join(d, file.name);
-			// Follow symlinks to directories (isDirectory() returns false for symlinks)
-			// Wrap statSync in try-catch to skip broken symlinks gracefully
-			let isDir = file.isDirectory();
-			if (!isDir && file.isSymbolicLink()) {
-				try { isDir = statSync(fullPath).isDirectory(); } catch { /* broken symlink */ }
-			}
-			if (isDir) {
-				scan(fullPath);
-			} else if (file.name.endsWith(".md")) {
-				const def = parseCommandFile(fullPath);
-				if (def) {
-					if (!def.nameFromFrontmatter) {
-						const relDir = relative(baseDir, d);
-						if (relDir) {
-							def.name = `${relDir.replace(/[\\/]/g, "-")}-${def.name}`;
-						}
-					}
-					const key = def.name.toLowerCase();
-					if (!seen.has(key)) {
-						seen.add(key);
-						commands.push(def);
-					}
-				}
-			}
+	for (const filePath of collectCommandFiles(baseDir)) {
+		const def = parseCommandFile(filePath);
+		if (!def) continue;
+		const resolved = resolveCommandNameWithDir(def, baseDir, dirname(filePath));
+		const key = resolved.name.toLowerCase();
+		if (!seen.has(key)) {
+			seen.add(key);
+			commands.push(resolved);
 		}
 	}
 
-	scan(baseDir);
 	return commands;
 }
 
@@ -204,72 +209,49 @@ export default function (pi: ExtensionAPI) {
 		applyExtensionDefaults(import.meta.url, ctx);
 	});
 
+	// Create fork handler: spawns a pi subprocess
+	function createForkHandler(cmdDef: CommandDef) {
+		return async (args: string, _ctx: any) => {
+			const body = cmdDef.body.replace(/\$ARGUMENTS/g, (args ?? "").trim());
+			const proc = spawn("pi", [
+				"--mode", "json", "-p", "--no-extensions",
+				"-e", join(dirname(fileURLToPath(import.meta.url)), "tasks.ts"),
+				"--model", TOOLKIT_WORKER_MODEL || DEFAULT_SUBAGENT_MODEL,
+				"--tools", mapTools(cmdDef.allowedTools).join(","),
+				"--thinking", "off", "--append-system-prompt", body,
+				args || "",
+			], { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, PI_SUBAGENT: "1" } });
+
+			let output = "";
+			proc.stdout?.setEncoding("utf-8");
+			proc.stdout?.on("data", (chunk: string) => { output += chunk; });
+			await new Promise<void>((res) => proc.on("close", () => res()));
+
+			pi.sendMessage(
+				{ customType: "toolkit-command-result", content: output.length > 8000 ? output.slice(0, 8000) + "\n\n... [truncated]" : output || "(no output)", display: true },
+				{ deliverAs: "followUp", triggerTurn: true },
+			);
+		};
+	}
+
+	// Create inline handler: injects body as user message
+	function createInlineHandler(cmdDef: CommandDef) {
+		return async (args: string, _ctx: any) => {
+			const body = cmdDef.body.replace(/\$ARGUMENTS/g, (args ?? "").trim());
+			const tools = mapTools(cmdDef.allowedTools);
+			if (tools.length > 0) { pi.setActiveTools(tools); }
+			pi.sendMessage(
+				{ customType: "toolkit-command", content: body, display: true },
+				{ deliverAs: "user", triggerTurn: true },
+			);
+		};
+	}
+
 	for (const cmd of commands) {
-			const cmdName = cmd.name;
-			const desc = cmd.argumentHint
-				? `${cmd.description} — ${cmd.argumentHint}`
-				: cmd.description;
-
-			pi.registerCommand(cmdName, {
-				description: desc,
-				handler: async (args, _ctx) => {
-					const userArgs = (args ?? "").trim();
-					const body = cmd.body.replace(/\$ARGUMENTS/g, userArgs);
-
-					if (cmd.context === "fork") {
-						const tools = mapTools(cmd.allowedTools).join(",");
-						const model = TOOLKIT_WORKER_MODEL || DEFAULT_SUBAGENT_MODEL;
-
-						const tasksExtPath = join(dirname(fileURLToPath(import.meta.url)), "tasks.ts");
-						const proc = spawn("pi", [
-							"--mode", "json",
-							"-p",
-							"--no-extensions",
-							"-e", tasksExtPath,
-							"--model", model,
-							"--tools", tools,
-							"--thinking", "off",
-							"--append-system-prompt", body,
-							userArgs || "",
-						], {
-							stdio: ["ignore", "pipe", "pipe"],
-							env: { ...process.env, PI_SUBAGENT: "1" },
-						});
-
-						let output = "";
-						proc.stdout?.setEncoding("utf-8");
-						proc.stdout?.on("data", (chunk) => { output += chunk; });
-						proc.stderr?.on("data", () => {});
-
-						await new Promise<void>((res) => proc.on("close", () => res()));
-
-						const truncated = output.length > 8000
-							? output.slice(0, 8000) + "\n\n... [truncated]"
-							: output;
-
-						pi.sendMessage(
-							{
-								customType: "toolkit-command-result",
-								content: truncated || "(no output)",
-								display: true,
-							},
-							{ deliverAs: "followUp", triggerTurn: true },
-						);
-					} else {
-						const tools = mapTools(cmd.allowedTools);
-						if (tools.length > 0) {
-							pi.setActiveTools(tools);
-						}
-						pi.sendMessage(
-							{
-								customType: "toolkit-command",
-								content: body,
-								display: true,
-							},
-							{ deliverAs: "user", triggerTurn: true },
-						);
-					}
-				},
-			});
+		const desc = cmd.argumentHint ? `${cmd.description} — ${cmd.argumentHint}` : cmd.description;
+		pi.registerCommand(cmd.name, {
+			description: desc,
+			handler: cmd.context === "fork" ? createForkHandler(cmd) : createInlineHandler(cmd),
+		});
 	}
 }
