@@ -48,7 +48,9 @@ A scout subagent (SA${opts.scoutId}) is pre-spawned and ready. **ALWAYS delegate
 \`\`\`
 subagent_continue { id: ${opts.scoutId}, prompt: "Read the file at src/index.ts and summarize its exports" }
 \`\`\`
-The scout runs in the background. When it finishes, its findings are delivered as a follow-up message. Then you can respond to the user with the information.
+The scout runs in the background. When it finishes, its findings are delivered as a follow-up message that automatically triggers a new turn.
+
+**After dispatching, END YOUR TURN with a brief text response (e.g. "Dispatched scout, waiting for findings.").** Do NOT call \`subagent_list\` or any other tool in a polling loop while waiting — the system wakes you up when the scout finishes.
 
 ### What YOU still do directly:
 - Respond to the user (synthesize scout findings, answer questions)
@@ -104,7 +106,7 @@ Read the task carefully and classify its complexity:
 #### How to spawn scouts:
 1. Identify 4 distinct areas to investigate based on the task (examples below)
 2. Use \`subagent_create_batch\` to spawn all 4 at once with \`name: "scout"\`
-3. Wait for all scouts to report back (results arrive as follow-up messages)
+3. Wait for all scouts to report back (results arrive as follow-up messages that trigger new turns automatically — **end your current turn after spawning**, do NOT poll \`subagent_list\` while waiting)
 4. Synthesize their findings into the context you need for planning
 
 #### Example scout dispatch:
@@ -261,8 +263,8 @@ Reference actual code — no hand-waving.>
 - Keep changes minimal and focused
 - ALWAYS use the structured plan format (phases, not flat numbered steps)
 - For plans with 3+ phases, ALWAYS present a completion report at the end
-- ALWAYS wait for all scouts to finish before spawning new ones
-- Check \`subagent_list\` if unsure about active agent status before spawning
+- ALWAYS wait for all scouts to finish before spawning new ones — end your turn and the system wakes you up when results arrive
+- Do NOT poll \`subagent_list\` in a loop; call it at most once if you genuinely need to recall what is running
 - Use \`subagent_cleanup {}\` to clear stale/zombie agents if needed
 
 ## Commander Integration (ALWAYS use when connected)

@@ -119,6 +119,13 @@ export default function (pi: ExtensionAPI) {
 	let widgetCtx: any;
 	const widgetBoxes = new Map<number, { invalidate: () => void }>();
 
+	// Polling guard for subagent_list — finished subagents auto-deliver their
+	// results via followUp messages with triggerTurn:true, so the model should
+	// never need to poll. If it does anyway, we return a hard stop message after
+	// the first rapid repeat call to break the loop.
+	let lastListCallAt = 0;
+	const LIST_POLL_WINDOW_MS = 15_000;
+
 	// ── Agent definition registry (loaded from .md files + models.json) ───────
 	// Maps lowercase agent names to their definitions. Model assignments come from
 	// .pi/agents/models.json — not from .md frontmatter. When subagent_create is
@@ -447,7 +454,7 @@ export default function (pi: ExtensionAPI) {
 
 	pi.registerTool({
 		name: "subagent_create",
-		description: "Spawn a background subagent to perform a task. Returns the subagent ID immediately while it runs in the background. Results will be delivered as a follow-up message when finished.\n\nWhen `name` matches a known agent definition (scout, builder, reviewer, planner, tester, red-team), that agent's configured model, tools, and system prompt are automatically applied. Only set `model` to override the agent's default.",
+		description: "Spawn a background subagent to perform a task. Returns the subagent ID immediately while it runs in the background.\n\nIMPORTANT — DO NOT POLL: When the subagent finishes, its result is automatically delivered to you as a follow-up message that triggers a new turn. After spawning, end your current turn with a brief text response (e.g. \"Spawned SA1, waiting for results.\") and DO NOT call subagent_list, subagent_create, or any other tool in a loop while waiting. The system wakes you up when the work is done.\n\nWhen `name` matches a known agent definition (scout, builder, reviewer, planner, tester, red-team), that agent's configured model, tools, and system prompt are automatically applied. Only set `model` to override the agent's default.",
 		parameters: Type.Object({
 			task: Type.String({ description: "The complete task description for the subagent to perform" }),
 			name: Type.Optional(Type.String({ description: "Short role label (e.g. REVIEWER, SCOUT). If this matches a known agent definition, that agent's model/tools/prompt are auto-applied." })),
@@ -491,7 +498,7 @@ export default function (pi: ExtensionAPI) {
 
 	pi.registerTool({
 		name: "subagent_create_batch",
-		description: "Spawn multiple subagents at once with optional Commander task group. Pre-creates Commander tasks to avoid race conditions where multiple agents try to claim the same task.\n\nWhen an agent's `name` matches a known agent definition, that agent's configured model, tools, and system prompt are automatically applied.",
+		description: "Spawn multiple subagents at once with optional Commander task group. Pre-creates Commander tasks to avoid race conditions where multiple agents try to claim the same task.\n\nIMPORTANT — DO NOT POLL: Each subagent's result is automatically delivered to you as a follow-up message that triggers a new turn when it finishes. After spawning the batch, end your turn with a brief text response and DO NOT call subagent_list or any other tool in a loop while waiting. The system wakes you up as results arrive.\n\nWhen an agent's `name` matches a known agent definition, that agent's configured model, tools, and system prompt are automatically applied.",
 		parameters: Type.Object({
 			agents: Type.Array(Type.Object({
 				task: Type.String({ description: "The complete task description for the subagent" }),
@@ -599,7 +606,7 @@ export default function (pi: ExtensionAPI) {
 
 	pi.registerTool({
 		name: "subagent_continue",
-		description: "Continue an existing subagent's conversation. Use this to give further instructions to a finished subagent. Returns immediately while it runs in the background.",
+		description: "Continue an existing subagent's conversation. Use this to give further instructions to a finished subagent. Returns immediately while it runs in the background.\n\nIMPORTANT — DO NOT POLL: When the subagent finishes, its result is automatically delivered to you as a follow-up message that triggers a new turn. After continuing, end your turn with a brief text response and DO NOT call subagent_list or any other tool in a loop while waiting.",
 		parameters: Type.Object({
 			id: Type.Number({ description: "The ID of the subagent to continue" }),
 			prompt: Type.String({ description: "The follow-up prompt or new instructions" }),
@@ -663,9 +670,24 @@ export default function (pi: ExtensionAPI) {
 
 	pi.registerTool({
 		name: "subagent_list",
-		description: "List all active and finished subagents, showing their IDs, tasks, and status.",
+		description: "List all active and finished subagents, showing their IDs, tasks, and status.\n\nIMPORTANT — DO NOT POLL THIS TOOL. Finished subagents automatically deliver their results to you as follow-up messages that trigger a new turn. You do NOT need to check status by calling subagent_list repeatedly. Use this tool ONCE if you genuinely need to recall what is running (e.g. after a long conversation), then end your turn. Calling it in a loop while waiting wastes context and produces no new information.",
 		parameters: Type.Object({}),
 		execute: async () => {
+			const now = Date.now();
+			const sinceLast = now - lastListCallAt;
+			const running = Array.from(agents.values()).filter(s => s.status === "running");
+			lastListCallAt = now;
+
+			// Polling guard: if called rapidly while subagents are still running,
+			// return a hard stop message instead of the status — the only way to
+			// break a model stuck in a tight poll loop.
+			if (sinceLast < LIST_POLL_WINDOW_MS && running.length > 0) {
+				const ids = running.map(s => `SA${s.id} (${s.name})`).join(", ");
+				return {
+					content: [{ type: "text", text: `STOP POLLING. ${running.length} subagent(s) still running: ${ids}. Results will be delivered automatically as a follow-up message that triggers a new turn — you do NOT need to check status. End your current turn now with a brief text response (e.g. "Waiting for ${ids} to finish."). Do not call subagent_list, subagent_create, or any other tool in this turn.` }],
+				};
+			}
+
 			if (agents.size === 0) {
 				return { content: [{ type: "text", text: "No active subagents." }] };
 			}
@@ -674,8 +696,12 @@ export default function (pi: ExtensionAPI) {
 				`SA${s.id} [${s.status.toUpperCase()}] ${s.name} - ${s.task}`
 			).join("\n");
 
+			const reminder = running.length > 0
+				? "\n\nNote: results from running subagents are delivered automatically as follow-up messages — do not poll this tool."
+				: "";
+
 			return {
-				content: [{ type: "text", text: `Subagents:\n${list}` }],
+				content: [{ type: "text", text: `Subagents:\n${list}${reminder}` }],
 			};
 		},
 	});

@@ -1186,7 +1186,9 @@ A scout agent is on your team. **ALWAYS dispatch to the scout** for any context-
 \`\`\`
 dispatch_agent { agent: "scout", task: "Read the file at src/index.ts and summarize its exports" }
 \`\`\`
-The scout runs in the background. When it finishes, its findings are returned. Then you synthesize and respond to the user.
+The scout runs in the background. When it finishes, its findings are delivered as a follow-up message that automatically triggers a new turn.
+
+**After dispatching, END YOUR TURN with a brief text response.** Do NOT call \`subagent_list\` or any other tool in a polling loop while waiting — the system wakes you up when the scout finishes.
 
 ### What YOU still do directly:
 - Respond to the user (synthesize scout findings, answer questions)
